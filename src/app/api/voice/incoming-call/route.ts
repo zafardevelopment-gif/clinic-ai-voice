@@ -66,13 +66,46 @@ export async function POST(req: NextRequest) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   ) as any
 
-  // 1. Find clinic by the dialed number.
-  const { data: clinic } = await supabase
-    .from('clinics')
-    .select('id, name, is_active')
-    .eq('phone', incoming.to)
-    .eq('is_active', true)
-    .single()
+  // 1. Find clinic. Routing depends on whether this is a forwarded call:
+  //    - Forwarded call → ForwardedFrom header carries the clinic's original
+  //      public number; look up by forwarded_from_number (Mode 1).
+  //    - Direct call → the dialed number is a Twilio number owned by either
+  //      the platform LLP or the clinic itself; look up by twilio_number
+  //      (Mode 2/3). Falls back to `phone` for legacy rows.
+  const forwardedFrom = (params.ForwardedFrom || '').trim()
+  const dialedNumber = incoming.to
+
+  let clinic: { id: string; name: string; is_active: boolean } | null = null
+
+  if (forwardedFrom) {
+    const { data } = await supabase
+      .from('clinics')
+      .select('id, name, is_active')
+      .eq('forwarded_from_number', forwardedFrom)
+      .eq('is_active', true)
+      .single()
+    clinic = data
+  }
+
+  if (!clinic) {
+    const { data } = await supabase
+      .from('clinics')
+      .select('id, name, is_active')
+      .eq('twilio_number', dialedNumber)
+      .eq('is_active', true)
+      .single()
+    clinic = data
+  }
+
+  if (!clinic) {
+    const { data } = await supabase
+      .from('clinics')
+      .select('id, name, is_active')
+      .eq('phone', dialedNumber)
+      .eq('is_active', true)
+      .single()
+    clinic = data
+  }
 
   if (!clinic) {
     return xmlResponse(
@@ -228,7 +261,7 @@ async function handleLegacyJson(req: NextRequest): Promise<NextResponse> {
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   ) as any
 
-  const { clinic_phone, caller_phone } = await req.json()
+  const { clinic_phone, caller_phone, forwarded_from } = await req.json()
   if (!clinic_phone || !caller_phone) {
     return NextResponse.json(
       { error: 'clinic_phone and caller_phone are required' },
@@ -236,12 +269,37 @@ async function handleLegacyJson(req: NextRequest): Promise<NextResponse> {
     )
   }
 
-  const { data: clinic } = await supabase
-    .from('clinics')
-    .select('id, name, is_active')
-    .eq('phone', clinic_phone)
-    .eq('is_active', true)
-    .single()
+  let clinic: { id: string; name: string; is_active: boolean } | null = null
+
+  if (forwarded_from) {
+    const { data } = await supabase
+      .from('clinics')
+      .select('id, name, is_active')
+      .eq('forwarded_from_number', forwarded_from)
+      .eq('is_active', true)
+      .single()
+    clinic = data
+  }
+
+  if (!clinic) {
+    const { data } = await supabase
+      .from('clinics')
+      .select('id, name, is_active')
+      .eq('twilio_number', clinic_phone)
+      .eq('is_active', true)
+      .single()
+    clinic = data
+  }
+
+  if (!clinic) {
+    const { data } = await supabase
+      .from('clinics')
+      .select('id, name, is_active')
+      .eq('phone', clinic_phone)
+      .eq('is_active', true)
+      .single()
+    clinic = data
+  }
 
   if (!clinic) {
     return NextResponse.json(

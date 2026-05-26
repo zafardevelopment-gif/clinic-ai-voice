@@ -59,6 +59,11 @@ export type Database = {
           country: string | null
           logo_url: string | null
           is_active: boolean
+          onboarding_mode: 'forwarding' | 'llp_dedicated' | 'own_kyc'
+          forwarded_from_number: string | null
+          twilio_number: string | null
+          twilio_number_owner: 'platform' | 'clinic' | null
+          twilio_number_sid: string | null
           created_at: string
           updated_at: string
         }
@@ -72,6 +77,11 @@ export type Database = {
           country?: string | null
           logo_url?: string | null
           is_active?: boolean
+          onboarding_mode?: 'forwarding' | 'llp_dedicated' | 'own_kyc'
+          forwarded_from_number?: string | null
+          twilio_number?: string | null
+          twilio_number_owner?: 'platform' | 'clinic' | null
+          twilio_number_sid?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -84,6 +94,11 @@ export type Database = {
           country?: string | null
           logo_url?: string | null
           is_active?: boolean
+          onboarding_mode?: 'forwarding' | 'llp_dedicated' | 'own_kyc'
+          forwarded_from_number?: string | null
+          twilio_number?: string | null
+          twilio_number_owner?: 'platform' | 'clinic' | null
+          twilio_number_sid?: string | null
           updated_at?: string
         }
         Relationships: []
