@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 import Topbar from '@/components/layout/Topbar'
 import PageCard from '@/components/ui/PageCard'
 import { FormField, AppInput, AppTextarea } from '@/components/ui/FormField'
@@ -14,7 +13,6 @@ const PLATFORM_SHARED_TWILIO_NUMBER = '+12692800645'
 
 export default function NewClinicPage() {
   const router = useRouter()
-  const supabase = createClient()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [mode, setMode] = useState<OnboardingMode>('forwarding')
@@ -76,8 +74,17 @@ export default function NewClinicPage() {
       twilio_number_owner: twilioNumberOwner,
     }
 
-    const { error: err } = await supabase.from('clinics').insert(payload)
-    if (err) { setError(err.message); setLoading(false); return }
+    const res = await fetch('/api/admin/clinics', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const result = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      setError(result.error || 'Failed to create clinic')
+      setLoading(false)
+      return
+    }
     router.push('/admin/clinics')
   }
 
