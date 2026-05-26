@@ -1,94 +1,133 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=Figtree:wght@300;400;500;600;700;800&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
+  .text-balance { text-wrap: balance; }
+  .font-syne { font-family: 'Syne', sans-serif; }
+  .font-figtree { font-family: 'Figtree', sans-serif; }
 }
 
 @layer base {
-  .theme {
-    --font-heading: var(--font-sans);
-    --font-sans: var(--font-sans);
-  }
   :root {
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
-    --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.97 0 0);
-    --accent-foreground: oklch(0.205 0 0);
-    --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
-    --ring: oklch(0.708 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --radius: 0.625rem;
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.205 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.97 0 0);
-    --sidebar-accent-foreground: oklch(0.205 0 0);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.708 0 0);
+    /* ─────────────────────────────────────────────────────────
+       MINT CLINICAL — light + emerald green palette
+       Maps onto legacy var names so existing components keep
+       working without page-level edits.
+       ───────────────────────────────────────────────────────── */
+
+    /* Surfaces: --bg is the page background, --s1..s4 climb in
+       contrast for cards, panels, hover states */
+    --bg:         #f6faf8;   /* page bg — barely-tinted mint white */
+    --s1:         #ffffff;   /* sidebar / top-level surfaces */
+    --s2:         #ffffff;   /* card surfaces */
+    --s3:         #f1f5f3;   /* hover / subtle fills */
+    --s4:         #e8efea;   /* deeper hover, table stripe */
+
+    /* Borders — light gray with a hint of green */
+    --b1:         #e4ebe7;   /* primary border */
+    --b2:         #d4ddd7;   /* stronger border */
+    --b3:         #c3cdc7;   /* scrollbar */
+
+    /* Text — dark on light */
+    --txt:        #0f1f17;   /* near-black, slight green tint */
+    --txt2:       #4b5d54;   /* muted body */
+    --txt3:       #7a8d83;   /* hints, captions */
+
+    /* Accent — mint/emerald green replaces the old blue */
+    --acc:        #10b981;   /* emerald-500 */
+    --acc-hover:  #059669;   /* emerald-600 */
+    --acc-dim:    rgba(16,185,129,0.10);
+    --acc-glow:   rgba(16,185,129,0.22);
+
+    /* Secondary status colors */
+    --teal:       #0ea5a4;   /* slightly different teal so it
+                                contrasts from primary green */
+    --teal-dim:   rgba(14,165,164,0.10);
+    --amber:      #d97706;   /* amber-600 */
+    --amber-dim:  rgba(217,119,6,0.10);
+    --rose:       #dc2626;   /* red-600 */
+    --rose-dim:   rgba(220,38,38,0.10);
+    --violet:     #7c3aed;   /* violet-600 */
+    --violet-dim: rgba(124,58,237,0.10);
+
+    /* ShadCN tokens mapped to the light mint theme.
+       HSL values (no hsl() wrapper — that's how ShadCN expects them) */
+    --background: 150 25% 97%;   /* matches --bg */
+    --foreground: 150 30% 9%;    /* matches --txt */
+    --card: 0 0% 100%;
+    --card-foreground: 150 30% 9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 150 30% 9%;
+    --primary: 160 84% 39%;       /* emerald-500 */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 150 14% 96%;
+    --secondary-foreground: 150 30% 9%;
+    --muted: 150 14% 94%;
+    --muted-foreground: 150 8% 40%;
+    --accent: 160 84% 95%;        /* very pale green for accent fills */
+    --accent-foreground: 160 84% 25%;
+    --destructive: 0 73% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 150 14% 90%;
+    --input: 150 14% 90%;
+    --ring: 160 84% 39%;
+    --radius: 0.5rem;
+    --sidebar: 0 0% 100%;
+    --sidebar-foreground: 150 30% 15%;
+    --sidebar-primary: 160 84% 39%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 160 84% 95%;
+    --sidebar-accent-foreground: 160 84% 25%;
+    --sidebar-border: 150 14% 90%;
+    --sidebar-ring: 160 84% 39%;
+    --chart-1: 160 84% 39%;
+    --chart-2: 178 85% 33%;
+    --chart-3: 32 95% 44%;
+    --chart-4: 0 73% 51%;
+    --chart-5: 262 83% 58%;
   }
-  .dark {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.205 0 0);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.205 0 0);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.922 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
-    --accent-foreground: oklch(0.985 0 0);
-    --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.556 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --sidebar: oklch(0.205 0 0);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.488 0.243 264.376);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.269 0 0);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.556 0 0);
-  }
-  * {
-    @apply border-border outline-ring/50;
-  }
+
+  * { @apply border-border; }
   body {
     @apply bg-background text-foreground;
+    font-family: 'Figtree', sans-serif;
   }
-  html {
-    @apply font-sans;
-  }
+  html { font-family: 'Figtree', sans-serif; }
 }
+
+/* Light-theme scrollbar */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--b3);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--txt3); }
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(.95) translateY(10px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes livePulse {
+  0%   { box-shadow: 0 0 0 0 rgba(16,185,129,0.5); }
+  70%  { box-shadow: 0 0 0 7px rgba(16,185,129,0); }
+  100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); }
+}
+@keyframes aiPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.5; transform: scale(1.3); }
+}
+
+.animate-fadeUp    { animation: fadeUp .5s ease; }
+.animate-modalIn   { animation: modalIn .25s ease; }
+.animate-livePulse { animation: livePulse 1.8s infinite; }
+.animate-aiPulse   { animation: aiPulse 1.5s infinite; }
