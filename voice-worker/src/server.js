@@ -10,9 +10,14 @@ const PORT = process.env.PORT || 8080
 // Twilio sends 20ms mulaw frames (160 bytes) @ 8000 Hz. We accumulate frames
 // while the caller speaks and fire a turn after a short trailing silence.
 const FRAME_MS = 20
-const SILENCE_MS = 600        // pause that ends a caller turn
-const MIN_SPEECH_MS = 240     // ignore blips shorter than this
-const ENERGY_THRESHOLD = 0.008 // mulaw energy above this = speech (tuned low for phone audio)
+const SILENCE_MS = 700          // trailing pause that ends a caller turn
+const MIN_SPEECH_MS = 240       // ignore blips shorter than this
+const MAX_UTTERANCE_MS = 12000  // hard cap — force a turn so we never get stuck
+// Hysteresis: real speech (from logs) is ~0.15–0.25; phone-line noise can sit
+// just above a tiny floor. Use a higher bar to START speech and a lower bar to
+// keep counting silence, so background hum doesn't reset the silence timer.
+const SPEECH_THRESHOLD = 0.04   // energy above this = caller is speaking
+const SILENCE_THRESHOLD = 0.025 // energy below this = silence (ends the turn)
 
 const server = http.createServer((req, res) => {
   // Health check for Render/hosting.
@@ -133,18 +138,30 @@ wss.on('connection', (ws, req) => {
         if (framesSeen % 100 === 0) {
           console.log(`[${callId}] frames=${framesSeen} peakEnergy=${peakEnergy.toFixed(4)} speaking=${speaking} bufFrames=${speechFrames.length}`)
         }
-        if (energy > ENERGY_THRESHOLD) {
-          speaking = true
-          silenceMs = 0
-          speechMs += FRAME_MS
+        if (!speaking) {
+          // Wait for clearly-above-noise energy to START a turn.
+          if (energy > SPEECH_THRESHOLD) {
+            speaking = true
+            silenceMs = 0
+            speechMs = FRAME_MS
+            speechFrames = [buf]
+          }
+        } else {
+          // While speaking, accumulate. Only energy BELOW the (lower) silence
+          // threshold counts as a pause — so background hum doesn't reset it.
           speechFrames.push(buf)
-        } else if (speaking) {
-          silenceMs += FRAME_MS
-          speechFrames.push(buf) // keep trailing silence for natural cut
-          if (silenceMs >= SILENCE_MS) {
+          speechMs += FRAME_MS
+          if (energy < SILENCE_THRESHOLD) {
+            silenceMs += FRAME_MS
+          } else {
+            silenceMs = 0
+          }
+          // End the turn on a real trailing pause, OR when we hit the max cap.
+          if (silenceMs >= SILENCE_MS || speechMs >= MAX_UTTERANCE_MS) {
             speaking = false
-            console.log(`[${callId}] utterance end: speechMs=${speechMs}, firing=${speechMs >= MIN_SPEECH_MS}`)
-            if (speechMs >= MIN_SPEECH_MS) handleUtterance()
+            const fire = speechMs - silenceMs >= MIN_SPEECH_MS
+            console.log(`[${callId}] utterance end: speechMs=${speechMs} silenceMs=${silenceMs} firing=${fire}`)
+            if (fire) handleUtterance()
             else speechFrames = []
             speechMs = 0
             silenceMs = 0
