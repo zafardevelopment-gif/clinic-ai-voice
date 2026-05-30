@@ -11,8 +11,8 @@ const PORT = process.env.PORT || 8080
 // while the caller speaks and fire a turn after a short trailing silence.
 const FRAME_MS = 20
 const SILENCE_MS = 600        // pause that ends a caller turn
-const MIN_SPEECH_MS = 300     // ignore blips shorter than this
-const ENERGY_THRESHOLD = 0.02 // mulaw energy above this = speech
+const MIN_SPEECH_MS = 240     // ignore blips shorter than this
+const ENERGY_THRESHOLD = 0.008 // mulaw energy above this = speech (tuned low for phone audio)
 
 const server = http.createServer((req, res) => {
   // Health check for Render/hosting.
@@ -36,6 +36,9 @@ wss.on('connection', (ws, req) => {
   let speechMs = 0
   let processing = false       // don't start a new turn while one is running
   let closed = false
+  let framesSeen = 0           // diagnostics: total inbound frames
+  let peakEnergy = 0           // diagnostics: loudest frame energy seen
+  let botSpeaking = false      // ignore inbound audio while we're talking (echo)
 
   // Send a chunk of mulaw audio back to Twilio as outbound media.
   function sendAudio(mulawBuf) {
@@ -50,6 +53,7 @@ wss.on('connection', (ws, req) => {
   // Hindi as the fallback for scripts Sarvam TTS doesn't voice (e.g. Maithili).
   async function speak(text) {
     if (!text || closed) return
+    botSpeaking = true
     try {
       const ttsLang = detectTtsLanguage(text, session?.language || 'hi-IN')
       const audio = await synthesize(text, ttsLang, session?.speaker || 'anushka')
@@ -57,8 +61,19 @@ wss.on('connection', (ws, req) => {
       for (let i = 0; i < audio.length; i += 3200) {
         sendAudio(audio.subarray(i, i + 3200))
       }
+      // Keep ignoring inbound for the playback duration (~1 byte/sample @ 8kHz)
+      // plus a small tail, so our own audio isn't picked up as caller speech.
+      const playMs = Math.round((audio.length / 8000) * 1000) + 400
+      await new Promise(r => setTimeout(r, playMs))
     } catch (err) {
       console.error('[ws] TTS failed:', err.message)
+    } finally {
+      botSpeaking = false
+      // Reset VAD so the next caller turn starts clean.
+      speechFrames = []
+      speaking = false
+      speechMs = 0
+      silenceMs = 0
     }
   }
 
@@ -109,9 +124,15 @@ wss.on('connection', (ws, req) => {
         break
       }
       case 'media': {
-        if (!session || processing) return
+        if (!session || processing || botSpeaking) return
         const buf = Buffer.from(msg.media.payload, 'base64')
         const energy = mulawEnergy(buf)
+        framesSeen++
+        if (energy > peakEnergy) peakEnergy = energy
+        // Periodic energy log so we can tune the threshold from Render logs.
+        if (framesSeen % 100 === 0) {
+          console.log(`[${callId}] frames=${framesSeen} peakEnergy=${peakEnergy.toFixed(4)} speaking=${speaking} bufFrames=${speechFrames.length}`)
+        }
         if (energy > ENERGY_THRESHOLD) {
           speaking = true
           silenceMs = 0
@@ -122,6 +143,7 @@ wss.on('connection', (ws, req) => {
           speechFrames.push(buf) // keep trailing silence for natural cut
           if (silenceMs >= SILENCE_MS) {
             speaking = false
+            console.log(`[${callId}] utterance end: speechMs=${speechMs}, firing=${speechMs >= MIN_SPEECH_MS}`)
             if (speechMs >= MIN_SPEECH_MS) handleUtterance()
             else speechFrames = []
             speechMs = 0
