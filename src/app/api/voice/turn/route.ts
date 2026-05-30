@@ -31,7 +31,33 @@ const MAX_TURNS = 12 // safety cap so a call can't loop forever
 export async function POST(req: NextRequest) {
   const provider = getTelephonyProvider()
   const callId = req.nextUrl.searchParams.get('callId') || ''
+  const turnUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/voice/turn?callId=${callId}`
 
+  // Any unexpected error must NOT 500 — that makes Twilio hang up the call.
+  // Instead, re-prompt so the conversation can recover.
+  try {
+    return await handleTurn(req, provider, callId)
+  } catch (err) {
+    console.error('[voice/turn] unexpected error, re-prompting:', err)
+    return xml(
+      provider.buildResponse([
+        {
+          kind: 'gather',
+          prompt: 'Sorry, could you please say that again?',
+          language: 'en-IN',
+          timeoutSec: 5,
+          actionUrl: turnUrl,
+        },
+      ]),
+    )
+  }
+}
+
+async function handleTurn(
+  req: NextRequest,
+  provider: ReturnType<typeof getTelephonyProvider>,
+  callId: string,
+) {
   const { rawBody, params } = await readFormBody(req)
 
   // Verify the request really came from Twilio (production only).

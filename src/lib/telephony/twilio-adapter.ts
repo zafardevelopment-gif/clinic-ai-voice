@@ -117,7 +117,14 @@ function applyInstruction(vr: any, step: CallInstruction) {
       const gather = vr.gather({
         input: ['speech'],
         language: step.language || 'en-IN',
+        // 'auto' lets Twilio detect end-of-speech instead of waiting the full
+        // timeout — far more reliable for conversational replies like "haan".
+        speechTimeout: 'auto',
         timeout: step.timeoutSec || 5,
+        speechModel: 'phone_call',
+        // Hit the action URL even when the caller stays silent, so we can
+        // re-prompt instead of Twilio silently hanging up the call.
+        actionOnEmptyResult: true,
         action: step.actionUrl,
         method: 'POST',
       })
