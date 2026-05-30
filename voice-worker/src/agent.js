@@ -15,7 +15,9 @@ const llm = new OpenAI({
   baseURL: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1',
   defaultHeaders: { 'X-Title': 'ClinicAI Voice Worker' },
 })
-const MODEL = process.env.OPENROUTER_DEFAULT_MODEL || 'anthropic/claude-haiku-4-5'
+// gpt-4o handles Hindi/Indian-language reasoning and instruction-following
+// noticeably better than the small models, which matters for a receptionist.
+const MODEL = process.env.VOICE_WORKER_MODEL || 'openai/gpt-4o'
 
 /**
  * Loads everything needed for a call and returns a session object that keeps
@@ -97,8 +99,12 @@ function buildPrompt(clinic, cfg, doctors, patientName) {
   const today = new Date()
   const todayStr = today.toISOString().slice(0, 10)
   const weekday = today.toLocaleDateString('en-US', { weekday: 'long' })
+  const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+  const openDays = Array.isArray(cfg?.working_days) ? cfg.working_days : [1, 2, 3, 4, 5, 6]
+  const openDayNames = openDays.slice().sort((a, b) => a - b).map(d => DAY_NAMES[d]).join(', ')
   const hours = cfg?.working_hours_start && cfg?.working_hours_end
-    ? `Clinic hours: ${cfg.working_hours_start}–${cfg.working_hours_end}.` : ''
+    ? `Clinic open days: ${openDayNames}. Hours: ${cfg.working_hours_start}–${cfg.working_hours_end}. This open-days list is authoritative — if it includes Sunday, the clinic IS open Sunday. Do not refuse a day that is in this list.`
+    : `Clinic open days: ${openDayNames}.`
   const details = [
     clinic.address || clinic.city ? `Address: ${[clinic.address, clinic.city, clinic.country].filter(Boolean).join(', ')}` : '',
     clinic.phone ? `Phone: ${clinic.phone}` : '',
@@ -120,7 +126,7 @@ function buildPrompt(clinic, cfg, doctors, patientName) {
     `You are the AI phone receptionist for "${clinic.name || 'the clinic'}".`,
     `You are on a LIVE phone call. Keep replies short (1-2 sentences), warm, natural when spoken.`,
     tone ? `Tone: ${tone}.` : '',
-    `Reply in whatever language the caller uses — Hindi, English, Hinglish, Urdu, Maithili, Bhojpuri, Bengali, etc.`,
+    `Reply in whatever language the caller uses — Hindi, English, Hinglish, Urdu, Maithili, Bhojpuri, Bengali, etc. If the caller switches language or asks to speak another language (e.g. "Maithili mein baat karein"), continue naturally in that language. Never say you cannot speak a language.`,
     hours,
     patientName ? `The caller is ${patientName}.` : '',
     `Today is ${weekday}, ${todayStr}. Convert relative dates to exact YYYY-MM-DD.`,
