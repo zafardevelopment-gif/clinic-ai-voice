@@ -18,6 +18,15 @@ interface DoctorRow {
   departments: { name: string } | null
 }
 
+interface ClinicRow {
+  name: string
+  phone: string | null
+  email: string | null
+  address: string | null
+  city: string | null
+  country: string | null
+}
+
 interface BookingPayload {
   ready?: boolean
   patient_name?: string
@@ -122,7 +131,7 @@ async function handleTurn(
   // Load the call → clinic → voice config.
   const { data: call } = await supabase
     .from('calls')
-    .select('id, clinic_id, phone_number, patient_id, created_at, clinics(name), patients(full_name)')
+    .select('id, clinic_id, phone_number, patient_id, created_at, clinics(name, phone, email, address, city, country), patients(full_name)')
     .eq('id', callId)
     .single()
 
@@ -135,26 +144,29 @@ async function handleTurn(
     )
   }
 
-  const { data: agentConfig } = await supabase
-    .from('voice_agent_config')
-    .select('*')
-    .eq('clinic_id', call.clinic_id)
-    .single()
-
-  // Load this clinic's active doctors (with department) so the AI can match a
-  // real doctor and we can actually create the appointment.
-  const { data: doctors } = await supabase
-    .from('doctors')
-    .select('id, full_name, specialization, department_id, is_active, departments(name)')
-    .eq('clinic_id', call.clinic_id)
-    .eq('is_active', true)
+  // Fetch config, doctors, and conversation history in PARALLEL to cut latency
+  // (these are independent and were previously sequential round-trips).
+  const [{ data: agentConfig }, { data: doctors }, { data: history }] = await Promise.all([
+    supabase.from('voice_agent_config').select('*').eq('clinic_id', call.clinic_id).single(),
+    supabase
+      .from('doctors')
+      .select('id, full_name, specialization, department_id, is_active, departments(name)')
+      .eq('clinic_id', call.clinic_id)
+      .eq('is_active', true),
+    supabase
+      .from('conversations')
+      .select('speaker, message')
+      .eq('call_id', callId)
+      .order('timestamp', { ascending: true }),
+  ])
 
   const activeDoctors = (doctors || []) as DoctorRow[]
 
   const voiceProfile = resolveVoice(agentConfig?.voice_type)
   const language = agentConfig?.language || voiceProfile.language
   const voice = voiceProfile.polly
-  const clinicName = (call.clinics as { name: string } | null)?.name || 'the clinic'
+  const clinic = (call.clinics as ClinicRow | null) || null
+  const clinicName = clinic?.name || 'the clinic'
   const patientName =
     (call.patients as { full_name: string } | null)?.full_name || null
 
@@ -177,13 +189,6 @@ async function handleTurn(
     )
   }
 
-  // Load existing conversation history for context (oldest first).
-  const { data: history } = await supabase
-    .from('conversations')
-    .select('speaker, message')
-    .eq('call_id', callId)
-    .order('timestamp', { ascending: true })
-
   const turnsSoFar = (history?.length || 0) / 2
   if (turnsSoFar >= MAX_TURNS) {
     await saveTurns(supabase, callId, transcript, null)
@@ -203,7 +208,7 @@ async function handleTurn(
 
   // Build the LLM conversation.
   const messages: LlmMessage[] = [
-    { role: 'system', content: systemPrompt(clinicName, patientName, agentConfig, activeDoctors) },
+    { role: 'system', content: systemPrompt(clinic, clinicName, patientName, agentConfig, activeDoctors) },
   ]
   for (const h of history || []) {
     messages.push({
@@ -220,7 +225,7 @@ async function handleTurn(
     const result = await chatCompletion(messages, {
       withFallback: true,
       temperature: 0.3,
-      maxTokens: 200,
+      maxTokens: 150,
     })
     turn = parseTurn(result.content)
   } catch (err) {
@@ -302,6 +307,7 @@ async function saveTurns(
 }
 
 function systemPrompt(
+  clinic: ClinicRow | null,
   clinicName: string,
   patientName: string | null,
   cfg: any,
@@ -312,6 +318,20 @@ function systemPrompt(
       ? `Clinic hours are ${cfg.working_hours_start} to ${cfg.working_hours_end}.`
       : ''
   const caller = patientName ? `The caller is ${patientName}.` : ''
+
+  // Clinic contact/location details so the AI can answer "where are you",
+  // "what's your number", etc.
+  const clinicDetails = clinic
+    ? [
+        clinic.address || clinic.city
+          ? `Address: ${[clinic.address, clinic.city, clinic.country].filter(Boolean).join(', ')}`
+          : '',
+        clinic.phone ? `Clinic phone: ${clinic.phone}` : '',
+        clinic.email ? `Clinic email: ${clinic.email}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n')
+    : ''
 
   const today = new Date()
   const todayStr = today.toISOString().slice(0, 10)
@@ -350,14 +370,15 @@ function systemPrompt(
     hours,
     caller,
     `Today is ${weekday}, ${todayStr}. Convert relative dates ("kal", "tomorrow", "Monday") into an exact YYYY-MM-DD date.`,
+    clinicDetails ? `\nClinic details (use these to answer location/contact questions):\n${clinicDetails}` : '',
     ``,
     `Doctors available at this clinic:`,
     doctorList,
     knowledge ? `\nClinic knowledge base:\n${knowledge}` : '',
     customInstructions ? `\nAdditional instructions from the clinic:\n${customInstructions}` : '',
     ``,
-    `BOOKING FLOW: To book an appointment you need 4 things — patient name, a doctor or department from the list above, a date, and a time. Ask for whatever is missing, one thing at a time. When you have all four AND the caller has confirmed, set booking.ready=true.`,
-    `Never invent doctors, prices, or availability not given above.`,
+    `BOOKING FLOW: Only when the caller clearly wants to BOOK an appointment, collect 4 things — patient name, a doctor or department from the list above, a date, and a time. Ask for whatever is missing, one at a time. Set booking.ready=true ONLY after you have all four and the caller confirms. Questions about fees, timings, doctors, or directions are NOT bookings — just answer them and keep booking.ready=false.`,
+    `Never invent doctors, prices, or availability not given above. If asked about fees you were not told, say the front desk will confirm.`,
     `If it sounds like a medical emergency, tell them to call emergency services immediately and set end_call=true.`,
     ``,
     `ALWAYS respond with ONLY a JSON object (no prose, no markdown) in this exact shape:`,
@@ -454,7 +475,6 @@ async function tryBook(args: {
       clinic_id: clinicId,
       patient_id: patientId,
       doctor_id: doctor.id,
-      department_id: doctor.department_id,
       appointment_date: date,
       appointment_time: time,
       status: 'scheduled',

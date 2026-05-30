@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
 
   const db = getDb() as any
   const [{ data: clinic }, { data: cfg }, { data: doctors }] = await Promise.all([
-    db.from('clinics').select('name').eq('id', clinicId).single(),
+    db.from('clinics').select('name, phone, email, address, city, country').eq('id', clinicId).single(),
     db.from('voice_agent_config').select('*').eq('clinic_id', clinicId).single(),
     db
       .from('doctors')
@@ -38,9 +38,8 @@ export async function POST(req: NextRequest) {
       .eq('is_active', true),
   ])
 
-  const clinicName = clinic?.name || 'the clinic'
   const messages: LlmMessage[] = [
-    { role: 'system', content: buildPreviewPrompt(clinicName, cfg, doctors || []) },
+    { role: 'system', content: buildPreviewPrompt(clinic, cfg, doctors || []) },
     ...history.map(m => ({ role: m.role, content: m.content })),
   ]
 
@@ -66,10 +65,23 @@ export async function POST(req: NextRequest) {
   }
 }
 
-function buildPreviewPrompt(clinicName: string, cfg: any, doctors: any[]): string {
+function buildPreviewPrompt(clinic: any, cfg: any, doctors: any[]): string {
+  const clinicName = clinic?.name || 'the clinic'
   const today = new Date()
   const todayStr = today.toISOString().slice(0, 10)
   const weekday = today.toLocaleDateString('en-US', { weekday: 'long' })
+
+  const clinicDetails = clinic
+    ? [
+        clinic.address || clinic.city
+          ? `Address: ${[clinic.address, clinic.city, clinic.country].filter(Boolean).join(', ')}`
+          : '',
+        clinic.phone ? `Clinic phone: ${clinic.phone}` : '',
+        clinic.email ? `Clinic email: ${clinic.email}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n')
+    : ''
 
   const doctorList = doctors.length
     ? doctors
@@ -100,6 +112,7 @@ function buildPreviewPrompt(clinicName: string, cfg: any, doctors: any[]): strin
     tone ? `Speak in a ${tone} tone.` : '',
     `You may speak English, Hindi, or Hinglish to match the user.`,
     `Today is ${weekday}, ${todayStr}.`,
+    clinicDetails ? `\nClinic details:\n${clinicDetails}` : '',
     ``,
     `Doctors available:`,
     doctorList,
