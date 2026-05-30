@@ -177,6 +177,25 @@ export default function VoiceConfigPage() {
     }
   }
 
+  // Quick presets for working hours.
+  function setAllDay() {
+    setConfig(c => {
+      const ds = { ...c.day_schedules }
+      for (const d of Object.keys(ds).map(Number)) ds[d] = { ...ds[d], start: '00:00', end: '23:59' }
+      return { ...c, working_days: [0, 1, 2, 3, 4, 5, 6], day_schedules: ds }
+    })
+  }
+
+  function setOfficeHours() {
+    setConfig(c => {
+      const ds = { ...c.day_schedules }
+      for (const d of Object.keys(ds).map(Number)) {
+        ds[d] = { ...ds[d], start: d === 0 ? '00:00' : '09:00', end: d === 0 ? '00:00' : '18:00' }
+      }
+      return { ...c, working_days: [1, 2, 3, 4, 5, 6], day_schedules: ds }
+    })
+  }
+
   function toggleDay(day: number) {
     setConfig(c => ({
       ...c,
@@ -350,6 +369,19 @@ export default function VoiceConfigPage() {
             <div className="space-y-4">
               {/* Working Hours */}
               <PageCard title="Working Hours" subtitle="When AI Agent handles calls">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--txt3)' }}>Quick set:</span>
+                  <button onClick={setAllDay} type="button"
+                    className="px-3 py-1 rounded-md text-xs font-semibold"
+                    style={{ background: 'var(--acc-dim)', border: '1px solid var(--acc)', color: 'var(--acc)', cursor: 'pointer' }}>
+                    🕐 All Day (24/7)
+                  </button>
+                  <button onClick={setOfficeHours} type="button"
+                    className="px-3 py-1 rounded-md text-xs font-semibold"
+                    style={{ background: 'var(--s3)', border: '1px solid var(--b2)', color: 'var(--txt2)', cursor: 'pointer' }}>
+                    🏢 Mon–Sat 9–6
+                  </button>
+                </div>
                 <div className="space-y-2">
                   {Object.entries(config.day_schedules).map(([dayNum, sched]) => {
                     const d = Number(dayNum)
