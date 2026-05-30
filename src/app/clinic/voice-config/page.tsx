@@ -136,13 +136,21 @@ export default function VoiceConfigPage() {
 
   async function handleSave() {
     setSaving(true); setSaveError('')
+    // Derive the overall open window from the enabled days' schedules: earliest
+    // start and latest end. The backend uses these flat fields for the
+    // working-hours check, so they must reflect what the user set in the UI.
+    const enabled = config.working_days
+    const starts = enabled.map(d => config.day_schedules[d]?.start).filter(Boolean) as string[]
+    const ends = enabled.map(d => config.day_schedules[d]?.end).filter(Boolean) as string[]
+    const earliestStart = starts.length ? starts.sort()[0] : '09:00'
+    const latestEnd = ends.length ? ends.sort()[ends.length - 1] : '20:00'
     const body = {
       is_enabled: config.is_enabled,
       voice_type: config.voice_type,
       language: config.language,
       greeting_message: config.greeting_en,
-      working_hours_start: '09:00',
-      working_hours_end: '20:00',
+      working_hours_start: earliestStart,
+      working_hours_end: latestEnd,
       working_days: config.working_days,
       max_call_duration_seconds: config.max_call_duration_seconds,
       fallback_phone: config.fallback_phone || null,
