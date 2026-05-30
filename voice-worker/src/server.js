@@ -45,20 +45,17 @@ wss.on('connection', (ws, req) => {
   let peakEnergy = 0           // diagnostics: loudest frame energy seen
   let botSpeaking = false      // ignore inbound audio while we're talking (echo)
 
-  // Stream mulaw audio back to Twilio as outbound media. Twilio expects small
-  // frames (160 bytes = 20ms @ 8kHz mulaw), delivered at roughly real-time
-  // pace. Sending one giant chunk causes dropped/garbled playback — so we split
-  // into 160-byte frames and pace them ~20ms apart.
-  async function sendAudio(mulawBuf) {
+  // Stream mulaw audio back to Twilio as outbound media. Split into 160-byte
+  // (20ms) frames — but DON'T pace them: Twilio buffers and plays at real time
+  // on its side. Sending all frames immediately means the reply starts playing
+  // right away instead of dribbling out over many seconds.
+  function sendAudio(mulawBuf) {
     if (!streamSid || closed) return
     const FRAME = 160
     for (let i = 0; i < mulawBuf.length; i += FRAME) {
       if (closed) return
-      const frame = mulawBuf.subarray(i, i + FRAME)
-      const payload = frame.toString('base64')
+      const payload = mulawBuf.subarray(i, i + FRAME).toString('base64')
       ws.send(JSON.stringify({ event: 'media', streamSid, media: { payload } }))
-      // Pace ~every 20ms; batch the sleep every 10 frames to reduce overhead.
-      if ((i / FRAME) % 10 === 9) await new Promise(r => setTimeout(r, 180))
     }
   }
 
@@ -72,11 +69,12 @@ wss.on('connection', (ws, req) => {
       const ttsLang = detectTtsLanguage(text, session?.language || 'hi-IN')
       const audio = await synthesize(text, ttsLang, session?.speaker || 'anushka')
       console.log(`[${callId}] speaking ${audio.length} bytes (${ttsLang})`)
-      // sendAudio paces 160-byte frames in real time, so this resolves roughly
-      // when playback finishes.
-      await sendAudio(audio)
-      // Small tail so the last frames flush before we listen again.
-      await new Promise(r => setTimeout(r, 300))
+      // Send all frames immediately; Twilio plays them at real time. Then keep
+      // botSpeaking true for the actual playback duration (8000 bytes/sec for
+      // mulaw @ 8kHz) plus a small tail, so we don't hear our own audio.
+      sendAudio(audio)
+      const playMs = Math.round((audio.length / 8000) * 1000) + 300
+      await new Promise(r => setTimeout(r, playMs))
     } catch (err) {
       console.error('[ws] TTS failed:', err.message)
     } finally {
