@@ -136,9 +136,15 @@ function buildPrompt(clinic, cfg, doctors, patientName) {
     custom ? `\nClinic instructions:\n${custom}` : '',
     ``,
     `Reply in PLAIN TEXT only (no JSON/markdown).`,
-    `To BOOK: need patient name, a doctor/department from the list, a date, a time. Ask for what's missing, one at a time. Fee/timing/direction questions are NOT bookings.`,
-    `Only after all 4 details + caller confirms, append at the very end: [BOOK: <name> | <doctor or department> | <YYYY-MM-DD> | <HH:MM 24h>]`,
-    `When the caller is done, append [END]. The tags are not spoken.`,
+    ``,
+    `BOOKING — follow these steps IN ORDER, never repeat a step you already have an answer for, never ask two things at once:`,
+    `1. Doctor/department: if the caller names or accepts a doctor from the list (e.g. "Dr. Wahaj"), treat it as CHOSEN and move on — do NOT ask about the doctor again.`,
+    `2. Patient name: ask "Aapka naam kya hai?" (skip if already known).`,
+    `3. Date: ask which day.`,
+    `4. Time: ask what time.`,
+    `Once you have doctor + name + date + time, read them back ONCE for confirmation. When the caller says yes/haan/theek hai, append at the very end: [BOOK: <name> | <doctor or department> | <YYYY-MM-DD> | <HH:MM 24h>]`,
+    `Fee/timing/direction questions are NOT bookings — answer briefly and continue.`,
+    `When the caller is done, append [END]. Tags are never spoken.`,
   ].filter(Boolean).join('\n')
 }
 

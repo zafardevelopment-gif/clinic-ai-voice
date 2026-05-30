@@ -73,7 +73,7 @@ wss.on('connection', (ws, req) => {
       // botSpeaking true for the actual playback duration (8000 bytes/sec for
       // mulaw @ 8kHz) plus a small tail, so we don't hear our own audio.
       sendAudio(audio)
-      const playMs = Math.round((audio.length / 8000) * 1000) + 300
+      const playMs = Math.round((audio.length / 8000) * 1000) + 150
       await new Promise(r => setTimeout(r, playMs))
     } catch (err) {
       console.error('[ws] TTS failed:', err.message)
