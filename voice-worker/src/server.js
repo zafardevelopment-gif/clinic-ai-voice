@@ -2,7 +2,7 @@ import 'dotenv/config'
 import http from 'http'
 import { WebSocketServer } from 'ws'
 import { createSession, runTurn } from './agent.js'
-import { transcribe, synthesize } from './sarvam.js'
+import { transcribe, synthesize, detectTtsLanguage } from './sarvam.js'
 
 const PORT = process.env.PORT || 8080
 
@@ -45,11 +45,14 @@ wss.on('connection', (ws, req) => {
     ws.send(JSON.stringify({ event: 'media', streamSid, media: { payload } }))
   }
 
-  // Speak text: synthesize via Sarvam and stream to Twilio.
+  // Speak text: synthesize via Sarvam and stream to Twilio. The spoken language
+  // follows the reply text (so the AI can answer in Bengali, Tamil, etc.), with
+  // Hindi as the fallback for scripts Sarvam TTS doesn't voice (e.g. Maithili).
   async function speak(text) {
     if (!text || closed) return
     try {
-      const audio = await synthesize(text, session?.language || 'hi-IN', session?.speaker || 'anushka')
+      const ttsLang = detectTtsLanguage(text, session?.language || 'hi-IN')
+      const audio = await synthesize(text, ttsLang, session?.speaker || 'anushka')
       // Send in ~3200-byte chunks (~0.4s) so Twilio plays smoothly.
       for (let i = 0; i < audio.length; i += 3200) {
         sendAudio(audio.subarray(i, i + 3200))

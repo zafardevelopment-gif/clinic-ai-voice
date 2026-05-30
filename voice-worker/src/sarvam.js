@@ -69,6 +69,32 @@ export async function synthesize(text, targetLanguage = 'hi-IN', speaker = 'anus
   return Buffer.from(b64, 'base64')
 }
 
+// Languages Sarvam TTS can actually speak. Anything else falls back to Hindi
+// (e.g. Maithili/Bhojpuri have no TTS voice — we still answer, just in Hindi).
+const TTS_LANGS = ['hi-IN', 'en-IN', 'bn-IN', 'gu-IN', 'kn-IN', 'ml-IN', 'mr-IN', 'od-IN', 'pa-IN', 'ta-IN', 'te-IN']
+
+/**
+ * Best-effort detect of the language to speak, based on the Unicode script of
+ * the reply text. Returns a Sarvam-supported target_language_code.
+ */
+export function detectTtsLanguage(text, fallback = 'hi-IN') {
+  if (!text) return fallback
+  const has = re => re.test(text)
+  if (has(/[ঀ-৿]/)) return 'bn-IN' // Bengali
+  if (has(/[઀-૿]/)) return 'gu-IN' // Gujarati
+  if (has(/[ಀ-೿]/)) return 'kn-IN' // Kannada
+  if (has(/[ഀ-ൿ]/)) return 'ml-IN' // Malayalam
+  if (has(/[଀-୿]/)) return 'od-IN' // Odia
+  if (has(/[਀-੿]/)) return 'pa-IN' // Gurmukhi (Punjabi)
+  if (has(/[஀-௿]/)) return 'ta-IN' // Tamil
+  if (has(/[ఀ-౿]/)) return 'te-IN' // Telugu
+  // Devanagari covers Hindi/Marathi/Maithili/Bhojpuri — speak as Hindi.
+  if (has(/[ऀ-ॿ]/)) return 'hi-IN'
+  // Mostly Latin letters → English.
+  if (has(/[A-Za-z]/)) return 'en-IN'
+  return TTS_LANGS.includes(fallback) ? fallback : 'hi-IN'
+}
+
 /** Wrap raw mulaw samples in a minimal WAV (format 7 = mulaw) container. */
 function mulawToWav(pcmMulaw, sampleRate) {
   const dataSize = pcmMulaw.length
