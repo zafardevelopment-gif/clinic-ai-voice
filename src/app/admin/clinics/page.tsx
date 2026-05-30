@@ -4,6 +4,8 @@ import PageCard from '@/components/ui/PageCard'
 import StatusBadge from '@/components/ui/StatusBadge'
 import Link from 'next/link'
 
+export const dynamic = 'force-dynamic'
+
 export default async function ClinicsPage() {
   const supabase = createClient()
 

@@ -51,9 +51,19 @@ export default function EditClinicPage() {
       country: form.country || null,
       is_active: form.is_active,
     }
-    const { error: err } = await supabase.from('clinics').update(payload).eq('id', id)
-    if (err) { setError(err.message); setLoading(false); return }
+    const res = await fetch(`/api/admin/clinics/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const result = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      setError(result.error || 'Failed to update clinic')
+      setLoading(false)
+      return
+    }
     router.push('/admin/clinics')
+    router.refresh()
   }
 
   if (fetching) return <div className="flex-1 flex items-center justify-center" style={{ color: 'var(--txt2)' }}>Loading...</div>

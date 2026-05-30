@@ -86,6 +86,7 @@ export default function NewClinicPage() {
       return
     }
     router.push('/admin/clinics')
+    router.refresh()
   }
 
   return (
