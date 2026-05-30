@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import Topbar from '@/components/layout/Topbar'
 import PageCard from '@/components/ui/PageCard'
 
@@ -33,37 +32,20 @@ const STATUS_COLORS: Record<string, { bg: string; fg: string }> = {
 }
 
 export default function ReminderLogsPage() {
-  const supabase = createClient()
   const [rows, setRows] = useState<ReminderRow[]>([])
   const [loading, setLoading] = useState(true)
   const [filterStatus, setFilterStatus] = useState<string>('all')
 
   async function load() {
     setLoading(true)
-    // `appointment_reminders` was added in migration 0002 — database types
-    // haven't been regenerated yet, so cast to a loose client. Safe because
-    // we map the shape via the ReminderRow interface below.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let q = (supabase as any)
-      .from('appointment_reminders')
-      .select(`
-        id, type, status, response, scheduled_at, placed_at, ended_at,
-        to_number, duration_seconds, dtmf_received, attempt, error_message,
-        patients ( full_name ),
-        appointments ( appointment_date, appointment_time )
-      `)
-      .order('scheduled_at', { ascending: false })
-      .limit(200)
-
-    if (filterStatus !== 'all') {
-      q = q.eq('status', filterStatus)
-    }
-
-    const { data } = await q
-    setRows((data as ReminderRow[] | null) || [])
+    const data: ReminderRow[] = await fetch(
+      `/api/clinic/reminders/logs?status=${filterStatus}`,
+    ).then(r => (r.ok ? r.json() : []))
+    setRows(data || [])
     setLoading(false)
   }
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { load() }, [filterStatus])
 
   return (

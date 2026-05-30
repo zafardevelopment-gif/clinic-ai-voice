@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 import Topbar from '@/components/layout/Topbar'
 import PageCard from '@/components/ui/PageCard'
 import { FormField, AppInput, AppSelect, AppTextarea } from '@/components/ui/FormField'
@@ -11,7 +10,6 @@ import AppBtn from '@/components/ui/AppBtn'
 export default function EditClinicPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
-  const supabase = createClient()
   const [loading, setLoading] = useState(false)
   const [fetching, setFetching] = useState(true)
   const [error, setError] = useState('')
@@ -20,18 +18,20 @@ export default function EditClinicPage() {
   })
 
   useEffect(() => {
-    supabase.from('clinics').select('*').eq('id', id).single().then(({ data }) => {
-      if (data) setForm({
-        name: data.name || '',
-        phone: data.phone || '',
-        email: data.email || '',
-        address: data.address || '',
-        city: data.city || '',
-        country: data.country || '',
-        is_active: data.is_active ?? true,
+    fetch(`/api/admin/clinics/${id}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        if (data) setForm({
+          name: data.name || '',
+          phone: data.phone || '',
+          email: data.email || '',
+          address: data.address || '',
+          city: data.city || '',
+          country: data.country || '',
+          is_active: data.is_active ?? true,
+        })
+        setFetching(false)
       })
-      setFetching(false)
-    })
   }, [id])
 
   function set(field: string, value: string | boolean) {

@@ -4,6 +4,22 @@ import { getSession } from '@/lib/session'
 
 type OnboardingMode = 'forwarding' | 'llp_dedicated' | 'own_kyc'
 
+// Lists active clinics (admin only). Service-role so RLS doesn't hide rows.
+export async function GET() {
+  const session = await getSession()
+  if (!session || session.role !== 'admin') {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
+  }
+  const db = getDb()
+  const { data, error } = await db
+    .from('clinics')
+    .select('id, name')
+    .eq('is_active', true)
+    .order('name')
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json(data)
+}
+
 export async function POST(req: NextRequest) {
   const session = await getSession()
   if (!session || session.role !== 'admin') {

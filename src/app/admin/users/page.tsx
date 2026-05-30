@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import Topbar from '@/components/layout/Topbar'
 import PageCard from '@/components/ui/PageCard'
 import AppBtn from '@/components/ui/AppBtn'
@@ -21,7 +20,6 @@ interface UserRow {
 }
 
 export default function AdminUsersPage() {
-  const supabase = createClient()
   const [users, setUsers] = useState<UserRow[]>([])
   const [clinics, setClinics] = useState<{ id: string; name: string }[]>([])
   const [loading, setLoading] = useState(true)
@@ -29,41 +27,37 @@ export default function AdminUsersPage() {
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({ email: '', full_name: '', role: 'clinic_admin', clinic_id: '', password: '' })
 
+  async function loadUsers(clinicList?: { id: string; name: string }[]) {
+    const list = clinicList || clinics
+    const usersData: UserRow[] = await fetch('/api/admin/users').then(r => r.ok ? r.json() : [])
+    const clinicMap = Object.fromEntries(list.map(c => [c.id, c.name]))
+    const enriched: UserRow[] = (usersData || []).map(u => ({
+      ...u,
+      clinics: u.clinic_id ? { name: clinicMap[u.clinic_id] || '—' } : null,
+    }))
+    setUsers(enriched)
+  }
+
   useEffect(() => {
     async function load() {
-      const [{ data: usersData }, { data: clinicData }] = await Promise.all([
-        supabase.from('users').select('id, email, full_name, role, clinic_id, is_active, created_at').order('created_at', { ascending: false }),
-        supabase.from('clinics').select('id, name').eq('is_active', true).order('name'),
-      ])
-      const clinicMap = Object.fromEntries((clinicData || []).map(c => [c.id, c.name]))
-      const enriched: UserRow[] = (usersData || []).map(u => ({
-        ...u,
-        clinics: u.clinic_id ? { name: clinicMap[u.clinic_id] || '—' } : null,
-      }))
-      setUsers(enriched)
+      const clinicData: { id: string; name: string }[] = await fetch('/api/admin/clinics').then(r => r.ok ? r.json() : [])
       setClinics(clinicData || [])
+      await loadUsers(clinicData || [])
       setLoading(false)
     }
     load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function inviteUser() {
     setSaving(true)
-    // In production: use Supabase Admin API or send invite email
-    // For now we use signUp with service role (call a server action)
     const res = await fetch('/api/admin/invite-user', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(form),
     })
     if (res.ok) {
-      const { data: usersData } = await supabase.from('users').select('id, email, full_name, role, clinic_id, is_active, created_at').order('created_at', { ascending: false })
-      const clinicMap = Object.fromEntries(clinics.map(c => [c.id, c.name]))
-      const enriched: UserRow[] = (usersData || []).map(u => ({
-        ...u,
-        clinics: u.clinic_id ? { name: clinicMap[u.clinic_id] || '—' } : null,
-      }))
-      setUsers(enriched)
+      await loadUsers()
       setOpen(false)
     }
     setSaving(false)

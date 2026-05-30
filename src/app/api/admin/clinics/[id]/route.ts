@@ -2,6 +2,27 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { getSession } from '@/lib/session'
 
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const session = await getSession()
+  if (!session || session.role !== 'admin') {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
+  }
+  const { id } = await params
+  const db = getDb()
+  const { data, error } = await db
+    .from('clinics')
+    .select('*')
+    .eq('id', id)
+    .single()
+  if (error || !data) {
+    return NextResponse.json({ error: 'Clinic not found' }, { status: 404 })
+  }
+  return NextResponse.json(data)
+}
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },

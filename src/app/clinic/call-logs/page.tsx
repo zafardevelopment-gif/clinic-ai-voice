@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import Topbar from '@/components/layout/Topbar'
 import PageCard from '@/components/ui/PageCard'
 import StatusBadge from '@/components/ui/StatusBadge'
@@ -21,7 +20,6 @@ interface CallRow {
 }
 
 export default function CallLogsPage() {
-  const supabase = createClient()
   const [calls, setCalls] = useState<CallRow[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
@@ -30,17 +28,8 @@ export default function CallLogsPage() {
 
   useEffect(() => {
     async function load() {
-      const me = await fetch('/api/auth/me').then(r => r.ok ? r.json() : null)
-      const cid = me?.clinicId
-      if (cid) {
-        const { data } = await supabase
-          .from('calls')
-          .select('*, patients(full_name)')
-          .eq('clinic_id', cid)
-          .order('created_at', { ascending: false })
-          .limit(200)
-        setCalls(data || [])
-      }
+      const data: CallRow[] = await fetch('/api/clinic/calls').then(r => r.ok ? r.json() : [])
+      setCalls(data || [])
       setLoading(false)
     }
     load()
