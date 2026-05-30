@@ -51,6 +51,11 @@ export async function createSession(callId) {
     speaker: speakerFor(cfg?.voice_type),
     messages: [{ role: 'system', content: system }],
     greeting: cfg?.greeting_message || `Namaste! ${clinic.name || ''} mein aapka swagat hai. Main aapki kaise madad kar sakta hoon?`,
+    // For the OpenAI Realtime path: same context, but booking is done via the
+    // book_appointment function tool instead of [BOOK] tags.
+    realtimeInstructions:
+      system.replace(/Reply in PLAIN TEXT[\s\S]*$/i, '').trim() +
+      `\n\nTo book an appointment, gather the caller's name, a doctor/department from the list, a date, and a time, confirm them, then call the book_appointment function. Speak naturally in the caller's language. Keep replies short and conversational.`,
   }
 }
 
@@ -97,7 +102,7 @@ export async function runTurn(session, transcript) {
 
 // ─── prompt + parsing (ported from turn/route.ts) ─────────────────────────────
 
-function buildPrompt(clinic, cfg, doctors, patientName) {
+export function buildPrompt(clinic, cfg, doctors, patientName) {
   const today = new Date()
   const todayStr = today.toISOString().slice(0, 10)
   const weekday = today.toLocaleDateString('en-US', { weekday: 'long' })
@@ -168,7 +173,7 @@ function parseTags(raw) {
   return { reply: text || 'Maaf kijiye, dobara boliye?', booking, end }
 }
 
-async function tryBook(session, booking) {
+export async function tryBook(session, booking) {
   const name = (booking.patient_name || '').trim()
   const date = (booking.date || '').trim()
   const time = normalizeTime(booking.time || '')
@@ -260,7 +265,7 @@ async function saveTurn(callId, userMsg, aiMsg) {
   } catch (e) { console.error('[agent] saveTurn:', e.message) }
 }
 
-async function finalize(session) {
+export async function finalize(session) {
   try {
     const dur = session.startedAt ? Math.max(0, Math.round((Date.now() - new Date(session.startedAt).getTime()) / 1000)) : null
     const { data: c } = await db.from('calls').select('outcome').eq('id', session.callId).single()

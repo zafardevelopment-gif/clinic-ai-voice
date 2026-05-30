@@ -3,8 +3,11 @@ import http from 'http'
 import { WebSocketServer } from 'ws'
 import { createSession, runTurn } from './agent.js'
 import { transcribe, synthesize, detectTtsLanguage } from './sarvam.js'
+import { handleRealtimeCall } from './realtime.js'
 
 const PORT = process.env.PORT || 8080
+// 'openai' = OpenAI Realtime (fast, natural). Anything else = Sarvam pipeline.
+const VOICE_ENGINE = (process.env.VOICE_ENGINE || 'sarvam').toLowerCase()
 
 // ── Silence / turn detection tuning ──────────────────────────────────────────
 // Twilio sends 20ms mulaw frames (160 bytes) @ 8000 Hz. We accumulate frames
@@ -28,6 +31,32 @@ const server = http.createServer((req, res) => {
 const wss = new WebSocketServer({ server, path: undefined })
 
 wss.on('connection', (ws, req) => {
+  // ── OpenAI Realtime path: bridge Twilio <-> OpenAI and skip the Sarvam loop.
+  if (VOICE_ENGINE === 'openai') {
+    let pathCallId = (req?.url || '').split('/').filter(Boolean).pop() || null
+    const onStart = async data => {
+      let msg
+      try { msg = JSON.parse(data.toString()) } catch { return }
+      if (msg.event !== 'start') return
+      ws.off('message', onStart) // hand the socket over to the realtime bridge
+      const callId = msg.start.customParameters?.callId || pathCallId
+      console.log('[ws] (openai) stream start, callId=', callId)
+      if (!callId) { ws.close(); return }
+      try {
+        const session = await createSession(callId)
+        handleRealtimeCall(ws, session)
+        // Replay the start event so the bridge sees streamSid.
+        ws.emit('message', data)
+      } catch (err) {
+        console.error('[ws] (openai) session init failed:', err.message)
+        ws.close()
+      }
+    }
+    ws.on('message', onStart)
+    return
+  }
+
+  // ── Sarvam path (default) ───────────────────────────────────────────────────
   /** @type {null | object} */
   let session = null
   let streamSid = null
