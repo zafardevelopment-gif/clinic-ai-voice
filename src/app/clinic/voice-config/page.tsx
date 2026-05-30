@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Topbar from '@/components/layout/Topbar'
 import PageCard from '@/components/ui/PageCard'
 import AppBtn from '@/components/ui/AppBtn'
@@ -9,12 +9,14 @@ import { FormField, AppInput, AppSelect, AppTextarea } from '@/components/ui/For
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 const VOICES = [
-  { id: 'priya',  label: 'Priya',  sub: 'Hindi · Female',    emoji: '👩' },
-  { id: 'arjun',  label: 'Arjun',  sub: 'Hindi · Male',      emoji: '👨' },
-  { id: 'riya',   label: 'Riya',   sub: 'English · Female',  emoji: '👩' },
-  { id: 'rahul',  label: 'Rahul',  sub: 'English · Male',    emoji: '👨' },
-  { id: 'savita', label: 'Savita', sub: 'Urdu · Female',     emoji: '👩' },
-  { id: 'suresh', label: 'Suresh', sub: 'Urdu · Male',       emoji: '👨' },
+  { id: 'priya',  label: 'Priya',  sub: 'Hindi · Female',   emoji: '👩' },
+  { id: 'meera',  label: 'Meera',  sub: 'Hindi · Female',   emoji: '👩' },
+  { id: 'anjali', label: 'Anjali', sub: 'Hindi · Female',   emoji: '👩' },
+  { id: 'arjun',  label: 'Arjun',  sub: 'Hindi · Male',     emoji: '👨' },
+  { id: 'rahul',  label: 'Rahul',  sub: 'Hindi · Male',     emoji: '👨' },
+  { id: 'vikram', label: 'Vikram', sub: 'Hindi · Male',     emoji: '👨' },
+  { id: 'riya',   label: 'Riya',   sub: 'English · Female', emoji: '👩' },
+  { id: 'david',  label: 'David',  sub: 'English · Male',   emoji: '👨' },
 ]
 
 const LANGUAGES = [
@@ -54,6 +56,21 @@ export default function VoiceConfigPage() {
   const [chat, setChat] = useState<{ role: 'user' | 'assistant'; content: string }[]>([])
   const [chatInput, setChatInput] = useState('')
   const [chatBusy, setChatBusy] = useState(false)
+
+  // Voice sample preview
+  const [playingVoice, setPlayingVoice] = useState<string | null>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+
+  function playSample(voiceId: string) {
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current = null }
+    if (playingVoice === voiceId) { setPlayingVoice(null); return }
+    const audio = new Audio(`/api/clinic/voice-config/voice-sample?voice=${voiceId}`)
+    audioRef.current = audio
+    setPlayingVoice(voiceId)
+    audio.onended = () => setPlayingVoice(null)
+    audio.onerror = () => setPlayingVoice(null)
+    audio.play().catch(() => setPlayingVoice(null))
+  }
 
   async function sendChat() {
     const text = chatInput.trim()
@@ -260,16 +277,34 @@ export default function VoiceConfigPage() {
 
             {/* Voice Selection */}
             <PageCard title="Voice Selection" subtitle="Choose your AI receptionist's voice">
+              <p className="text-xs mb-3" style={{ color: 'var(--txt3)' }}>
+                Sample sun kar voice choose karein. Selected voice hi calls par istemal hogi.
+              </p>
               <div className="grid grid-cols-3 gap-3">
-                {VOICES.map(v => (
-                  <button key={v.id} onClick={() => setConfig(c => ({ ...c, voice_type: v.id }))}
-                    className="rounded-xl p-4 text-center transition-all cursor-pointer"
-                    style={{ background: config.voice_type === v.id ? 'var(--acc-dim)' : 'var(--s3)', border: `1.5px solid ${config.voice_type === v.id ? 'var(--acc)' : 'var(--b2)'}` }}>
-                    <div className="text-2xl mb-1">{v.emoji}</div>
-                    <div className="text-sm font-semibold" style={{ color: config.voice_type === v.id ? 'var(--acc)' : 'var(--txt)' }}>{v.label}</div>
-                    <div className="text-[10px]" style={{ color: 'var(--txt3)' }}>{v.sub}</div>
-                  </button>
-                ))}
+                {VOICES.map(v => {
+                  const selected = config.voice_type === v.id
+                  return (
+                    <div key={v.id}
+                      onClick={() => setConfig(c => ({ ...c, voice_type: v.id }))}
+                      className="rounded-xl p-4 text-center transition-all cursor-pointer relative"
+                      style={{ background: selected ? 'var(--acc-dim)' : 'var(--s3)', border: `1.5px solid ${selected ? 'var(--acc)' : 'var(--b2)'}` }}>
+                      <div className="text-2xl mb-1">{v.emoji}</div>
+                      <div className="text-sm font-semibold" style={{ color: selected ? 'var(--acc)' : 'var(--txt)' }}>{v.label}</div>
+                      <div className="text-[10px] mb-2" style={{ color: 'var(--txt3)' }}>{v.sub}</div>
+                      <button
+                        type="button"
+                        onClick={e => { e.stopPropagation(); playSample(v.id) }}
+                        className="text-[11px] font-semibold px-2.5 py-1 rounded-full"
+                        style={{ background: 'var(--s1)', border: '1px solid var(--b2)', color: 'var(--txt2)', cursor: 'pointer' }}>
+                        {playingVoice === v.id ? '⏸ Playing…' : '▶ Sample'}
+                      </button>
+                      {selected && (
+                        <div className="absolute top-2 right-2 text-[10px] px-1.5 py-0.5 rounded-full"
+                          style={{ background: 'var(--acc)', color: '#fff' }}>✓</div>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             </PageCard>
 

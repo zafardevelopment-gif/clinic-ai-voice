@@ -278,11 +278,14 @@ export async function finalize(session) {
   } catch (e) { console.error('[agent] finalize:', e.message) }
 }
 
-// Map clinic voice_type → Sarvam speaker. Female/male Indian voices.
+// Map clinic voice_type → Sarvam speaker. Must match the voice-sample route
+// and the VOICES list in the AI Setup page.
 function speakerFor(voiceType) {
   const map = {
-    priya: 'anushka', riya: 'vidya', savita: 'manisha',
-    arjun: 'abhilash', rahul: 'karun', suresh: 'hitesh',
+    // female
+    priya: 'anushka', meera: 'vidya', anjali: 'manisha', riya: 'anushka',
+    // male
+    arjun: 'abhilash', rahul: 'karun', vikram: 'hitesh', david: 'karun',
   }
   return map[voiceType] || 'anushka'
 }
