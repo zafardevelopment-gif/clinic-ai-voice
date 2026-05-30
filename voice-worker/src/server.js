@@ -12,7 +12,7 @@ const PORT = process.env.PORT || 8080
 const FRAME_MS = 20
 const SILENCE_MS = 700          // trailing pause that ends a caller turn
 const MIN_SPEECH_MS = 240       // ignore blips shorter than this
-const MAX_UTTERANCE_MS = 12000  // hard cap — force a turn so we never get stuck
+const MAX_UTTERANCE_MS = 6000   // hard cap — force a turn so we never get stuck
 // Hysteresis: real speech (from logs) is ~0.15–0.25; phone-line noise can sit
 // just above a tiny floor. Use a higher bar to START speech and a lower bar to
 // keep counting silence, so background hum doesn't reset the silence timer.
@@ -145,6 +145,10 @@ wss.on('connection', (ws, req) => {
         if (framesSeen % 100 === 0) {
           console.log(`[${callId}] frames=${framesSeen} peakEnergy=${peakEnergy.toFixed(4)} speaking=${speaking} bufFrames=${speechFrames.length}`)
         }
+        // While speaking, log live energy/silence so we can see the noise floor.
+        if (speaking && speechMs % 500 === 0) {
+          console.log(`[${callId}] speaking energy=${energy.toFixed(4)} silenceMs=${silenceMs} speechMs=${speechMs}`)
+        }
         if (!speaking) {
           // Wait for clearly-above-noise energy to START a turn.
           if (energy > SPEECH_THRESHOLD) {
@@ -154,14 +158,15 @@ wss.on('connection', (ws, req) => {
             speechFrames = [buf]
           }
         } else {
-          // While speaking, accumulate. Only energy BELOW the (lower) silence
-          // threshold counts as a pause — so background hum doesn't reset it.
+          // While speaking, accumulate. A single loud frame (noise spike) must
+          // NOT reset the whole silence timer — decay it instead, so a genuine
+          // trailing pause still ends the turn even on a noisy line.
           speechFrames.push(buf)
           speechMs += FRAME_MS
           if (energy < SILENCE_THRESHOLD) {
             silenceMs += FRAME_MS
           } else {
-            silenceMs = 0
+            silenceMs = Math.max(0, silenceMs - FRAME_MS * 2) // decay, don't reset
           }
           // End the turn on a real trailing pause, OR when we hit the max cap.
           if (silenceMs >= SILENCE_MS || speechMs >= MAX_UTTERANCE_MS) {
