@@ -245,9 +245,12 @@ function xmlResponse(body: string, status = 200): NextResponse {
 }
 
 function isWithinWorkingHours(cfg: any): boolean {
-  const now = new Date()
-  const day = now.getDay()
-  const minutes = now.getHours() * 60 + now.getMinutes()
+  // Compute "now" in India time. The server runs in UTC, so convert explicitly
+  // (IST = UTC+5:30) instead of using the server's local clock.
+  const TZ_OFFSET_MIN = 5 * 60 + 30
+  const ist = new Date(Date.now() + TZ_OFFSET_MIN * 60 * 1000)
+  const day = ist.getUTCDay()
+  const minutes = ist.getUTCHours() * 60 + ist.getUTCMinutes()
   const workingDays: number[] = cfg.working_days || []
   if (!workingDays.includes(day)) return false
 
