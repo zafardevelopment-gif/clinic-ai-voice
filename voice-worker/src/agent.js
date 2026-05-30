@@ -133,7 +133,7 @@ export function buildPrompt(clinic, cfg, doctors, patientName) {
     `You are the AI phone receptionist for "${clinic.name || 'the clinic'}".`,
     `You are on a LIVE phone call. CRITICAL: keep every reply to ONE short sentence (max ~15 words). Ask only one thing at a time. Be warm but brief — long replies sound slow and robotic on the phone.`,
     tone ? `Tone: ${tone}.` : '',
-    `Reply in whatever language the caller uses — Hindi, English, Hinglish, Urdu, Maithili, Bhojpuri, Bengali, etc. If the caller switches language or asks to speak another language (e.g. "Maithili mein baat karein"), continue naturally in that language. Never say you cannot speak a language.`,
+    `Reply in the SAME language the caller uses. IMPORTANT: write your reply in that language's NATIVE SCRIPT, not Roman letters — Hindi/Maithili/Bhojpuri in Devanagari (e.g. "आपका नाम क्या है?" NOT "Aapka naam kya hai?"), Bengali in Bengali script, Tamil in Tamil script, etc. Only use Roman letters if the caller is clearly speaking English. Writing Hindi in Roman letters makes the text-to-speech voice sound wrong. Never say you cannot speak a language.`,
     hours,
     patientName ? `The caller is ${patientName}.` : '',
     `Today is ${weekday}, ${todayStr}. Convert relative dates to exact YYYY-MM-DD.`,
@@ -178,26 +178,28 @@ export async function tryBook(session, booking) {
   const date = (booking.date || '').trim()
   const time = normalizeTime(booking.time || '')
   if (!name || !date || !time) {
-    return { booked: false, message: 'Booking ke liye thodi aur detail chahiye — naam, date aur time bata dijiye.' }
+    return { booked: false, message: 'बुकिंग के लिए थोड़ी और जानकारी चाहिए — नाम, तारीख़ और समय बता दीजिए।' }
   }
   const doctor = pickDoctor(session.doctors, booking.doctor)
   if (!doctor) {
-    return { booked: false, message: 'Aapki request note kar li. Front desk doctor assign karke confirm karega. Aur kuch?' }
+    return { booked: false, message: 'आपकी रिक्वेस्ट नोट कर ली है। फ्रंट डेस्क डॉक्टर असाइन करके कन्फर्म करेगा। और कुछ?' }
   }
   try {
-    // Slot conflict: same doctor already booked at this date+time?
-    const { data: clash } = await db
+    // Slot conflict: same doctor already booked at this date+time? Match both
+    // 'HH:MM:SS' and 'HH:MM' since the column may store either form.
+    const { data: clashes } = await db
       .from('appointments')
-      .select('id')
+      .select('id, appointment_time')
       .eq('doctor_id', doctor.id)
       .eq('appointment_date', date)
-      .eq('appointment_time', time)
       .in('status', ['scheduled', 'confirmed'])
-      .maybeSingle()
+    const hhmm = time.slice(0, 5)
+    const clash = (clashes || []).some(a => (a.appointment_time || '').slice(0, 5) === hhmm)
+    console.log(`[${session.callId}] conflict check ${doctor.full_name} ${date} ${hhmm}: existing=${(clashes || []).length} clash=${clash}`)
     if (clash) {
       return {
         booked: false,
-        message: `Maaf kijiye, ${doctor.full_name} ke saath us samay ek appointment pehle se hai. Koi aur time bata dijiye?`,
+        message: `माफ़ कीजिए, ${doctor.full_name} के साथ उस समय पहले से अपॉइंटमेंट है। कोई और समय बता दीजिए?`,
       }
     }
 
@@ -219,10 +221,10 @@ export async function tryBook(session, booking) {
       appointment_date: date, appointment_time: time, status: 'scheduled', booked_via: 'ai_voice',
     })
     await db.from('calls').update({ outcome: 'booked', call_type: 'booking', intent: 'book_appointment' }).eq('id', session.callId)
-    return { booked: true, message: `Ho gaya! Aapka appointment ${doctor.full_name} ke saath ${date} ko ${time.slice(0, 5)} baje book ho gaya. Confirmation message aa jayega. Shukriya!` }
+    return { booked: true, message: `हो गया! आपका अपॉइंटमेंट ${doctor.full_name} के साथ ${date} को ${time.slice(0, 5)} बजे बुक हो गया। कन्फर्मेशन मैसेज आ जाएगा। शुक्रिया!` }
   } catch (err) {
     console.error('[agent] booking failed:', err.message)
-    return { booked: false, message: 'Abhi save karne mein dikkat hui. Front desk aapko call karke confirm karega. Aur kuch?' }
+    return { booked: false, message: 'अभी सेव करने में दिक्कत हुई। फ्रंट डेस्क आपको कॉल करके कन्फर्म करेगा। और कुछ?' }
   }
 }
 
