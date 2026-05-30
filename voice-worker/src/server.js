@@ -93,14 +93,15 @@ wss.on('connection', (ws, req) => {
     speechFrames = []
     if (!frames.length) return
     processing = true
-    botSpeaking = true // hold the mic for the whole turn (STT + streamed reply)
+    botSpeaking = true // hold the mic for the whole turn (STT + reply playback)
     try {
       const audio = Buffer.concat(frames)
       const transcript = await transcribe(audio, 'unknown')
       if (!transcript) { return }
       console.log(`[${callId}] caller: ${transcript}`)
-      // Stream the reply: each sentence is spoken as soon as it's ready.
-      const { end } = await runTurn(session, transcript, speakChunk)
+      const { reply, end } = await runTurn(session, transcript)
+      console.log(`[${callId}] ai: ${reply}`)
+      await speakChunk(reply) // one smooth audio clip for the whole reply
       if (end) {
         setTimeout(() => { try { ws.close() } catch {} }, 1200)
       }

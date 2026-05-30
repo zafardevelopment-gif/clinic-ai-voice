@@ -55,93 +55,44 @@ export async function createSession(callId) {
 }
 
 /**
- * Run one turn with STREAMING: the model's reply is read token-by-token, and
- * each complete sentence is handed to `onSentence` immediately so it can be
- * spoken while the rest is still generating (much lower perceived latency).
- *
- * Tags ([BOOK ...]/[END]) are stripped from spoken text. If a booking tag is
- * present we run it after streaming and speak the booking result instead.
- *
- * @param {object} session
- * @param {string} transcript
- * @param {(sentence: string) => Promise<void>} onSentence speak a chunk now
- * @returns {Promise<{ end: boolean }>}
+ * Run one turn: append the caller's transcript, get the FULL AI reply in one
+ * shot (so TTS produces a single smooth audio clip — streaming chopped it into
+ * choppy per-sentence clips), create a booking if tagged, and return the text
+ * to speak + whether to end.
+ * @returns {Promise<{ reply: string, end: boolean }>}
  */
-export async function runTurn(session, transcript, onSentence) {
+export async function runTurn(session, transcript) {
   session.messages.push({ role: 'user', content: transcript })
 
-  let raw = ''
-  let spokenSoFar = ''     // chars already flushed to onSentence
-  let pending = ''         // buffer holding un-flushed text
-  let sawTag = false       // once a '[' appears, stop speaking (tag territory)
-
-  // Flush any complete sentences from `pending` to onSentence.
-  async function flush(force = false) {
-    if (sawTag) return
-    // If a tag starts, only speak the text before it.
-    const tagIdx = pending.indexOf('[')
-    if (tagIdx >= 0) {
-      const speakable = pending.slice(0, tagIdx).trim()
-      if (speakable) { await onSentence(speakable); spokenSoFar += speakable }
-      pending = pending.slice(tagIdx)
-      sawTag = true
-      return
-    }
-    // Speak on sentence boundaries; or everything if forced (stream ended).
-    const parts = pending.split(/(?<=[।.?!])\s+/)
-    if (!force && parts.length > 1) {
-      const ready = parts.slice(0, -1).join(' ').trim()
-      if (ready) { await onSentence(ready); spokenSoFar += ' ' + ready }
-      pending = parts[parts.length - 1]
-    } else if (force) {
-      const rest = pending.trim()
-      if (rest) { await onSentence(rest); spokenSoFar += ' ' + rest }
-      pending = ''
-    }
-  }
-
+  let raw
   try {
-    const stream = await llm.chat.completions.create({
+    const r = await llm.chat.completions.create({
       model: MODEL,
       messages: session.messages,
       temperature: 0.3,
-      max_tokens: 150,
-      stream: true,
+      max_tokens: 120,
     })
-    for await (const chunk of stream) {
-      const delta = chunk.choices?.[0]?.delta?.content || ''
-      if (!delta) continue
-      raw += delta
-      pending += delta
-      await flush(false)
-    }
-    await flush(true)
+    raw = (r.choices?.[0]?.message?.content || '').trim()
   } catch (err) {
-    console.error('[agent] LLM stream error:', err.message)
-    if (!raw) {
-      const msg = 'Maaf kijiye, thodi dikkat ho rahi hai. Aap dobara bata sakte hain?'
-      raw = msg
-      await onSentence(msg)
-    }
+    console.error('[agent] LLM error:', err.message)
+    raw = 'Maaf kijiye, thodi dikkat ho rahi hai. Aap dobara bata sakte hain?'
   }
 
   const { reply: cleaned, booking, end: endTag } = parseTags(raw)
+  let reply = cleaned
   let end = endTag
-  let savedReply = cleaned
 
-  // If a booking was requested, run it and speak the real confirmation now.
   if (booking) {
     const r = await tryBook(session, booking)
-    savedReply = r.message
-    await onSentence(r.message)
+    reply = r.message
     if (r.booked) end = true
   }
 
-  session.messages.push({ role: 'assistant', content: savedReply })
-  await saveTurn(session.callId, transcript, savedReply)
+  session.messages.push({ role: 'assistant', content: reply })
+  await saveTurn(session.callId, transcript, reply)
   if (end) await finalize(session)
 
-  return { end }
+  return { reply, end }
 }
 
 // ─── prompt + parsing (ported from turn/route.ts) ─────────────────────────────
@@ -229,6 +180,22 @@ async function tryBook(session, booking) {
     return { booked: false, message: 'Aapki request note kar li. Front desk doctor assign karke confirm karega. Aur kuch?' }
   }
   try {
+    // Slot conflict: same doctor already booked at this date+time?
+    const { data: clash } = await db
+      .from('appointments')
+      .select('id')
+      .eq('doctor_id', doctor.id)
+      .eq('appointment_date', date)
+      .eq('appointment_time', time)
+      .in('status', ['scheduled', 'confirmed'])
+      .maybeSingle()
+    if (clash) {
+      return {
+        booked: false,
+        message: `Maaf kijiye, ${doctor.full_name} ke saath us samay ek appointment pehle se hai. Koi aur time bata dijiye?`,
+      }
+    }
+
     let patientId = session.patientId
     if (!patientId) {
       const { data: existing } = await db.from('patients').select('id').eq('clinic_id', session.clinicId).eq('phone', session.callerPhone).maybeSingle()
