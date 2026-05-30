@@ -50,7 +50,7 @@ export interface CallStatusPayload {
 export type CallInstruction =
   | { kind: 'say'; text: string; language?: string; voice?: string }
   | { kind: 'play'; url: string }
-  | { kind: 'gather'; prompt: string; language?: string; timeoutSec?: number; actionUrl: string }
+  | { kind: 'gather'; prompt: string; language?: string; timeoutSec?: number; actionUrl: string; voice?: string }
   | { kind: 'connectStream'; wsUrl: string; metadata?: Record<string, string> }
   | { kind: 'dial'; number: string }
   | { kind: 'hangup'; reason?: string }

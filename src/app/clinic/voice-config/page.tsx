@@ -24,6 +24,13 @@ const LANGUAGES = [
   { value: 'ur-PK', label: 'Urdu' },
 ]
 
+const TONES = [
+  'warm and professional',
+  'friendly and casual',
+  'formal and concise',
+  'empathetic and reassuring',
+]
+
 const WORKING_HOURS: Record<number, { label: string; start: string; end: string; open: boolean }> = {
   1: { label: 'Monday',    start: '09:00', end: '20:00', open: true },
   2: { label: 'Tuesday',   start: '09:00', end: '20:00', open: true },
@@ -37,11 +44,38 @@ const WORKING_HOURS: Record<number, { label: string; start: string; end: string;
 type DaySchedule = { start: string; end: string; open: boolean }
 
 export default function VoiceConfigPage() {
-  const [tab, setTab] = useState<'dashboard' | 'setup' | 'logs'>('setup')
+  const [tab, setTab] = useState<'dashboard' | 'setup' | 'test' | 'logs'>('setup')
   const [configId, setConfigId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [saveError, setSaveError] = useState('')
+
+  // Test-AI chat state
+  const [chat, setChat] = useState<{ role: 'user' | 'assistant'; content: string }[]>([])
+  const [chatInput, setChatInput] = useState('')
+  const [chatBusy, setChatBusy] = useState(false)
+
+  async function sendChat() {
+    const text = chatInput.trim()
+    if (!text || chatBusy) return
+    const next = [...chat, { role: 'user' as const, content: text }]
+    setChat(next)
+    setChatInput('')
+    setChatBusy(true)
+    try {
+      const res = await fetch('/api/clinic/voice-config/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: next }),
+      })
+      const data = await res.json()
+      setChat([...next, { role: 'assistant', content: res.ok ? data.reply : (data.error || 'AI unavailable') }])
+    } catch {
+      setChat([...next, { role: 'assistant', content: 'Network error — try again.' }])
+    } finally {
+      setChatBusy(false)
+    }
+  }
 
   const [config, setConfig] = useState({
     is_enabled: false,
@@ -64,6 +98,8 @@ export default function VoiceConfigPage() {
       allow_cancel: false,
       slot_duration_minutes: 20,
       doctor_selection: 'auto_department',
+      tone: 'warm and professional',
+      custom_instructions: '',
     },
     ai_knowledge: {
       clinic_name: '',
@@ -153,11 +189,11 @@ export default function VoiceConfigPage() {
     <div className="flex flex-col flex-1 overflow-hidden">
       {/* Tab header */}
       <div className="flex items-center gap-1 px-6 pt-4 pb-0" style={{ borderBottom: '1px solid var(--b1)' }}>
-        {(['dashboard', 'setup', 'logs'] as const).map(t => (
+        {(['dashboard', 'setup', 'test', 'logs'] as const).map(t => (
           <button key={t} onClick={() => setTab(t)}
             className="px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded-t-lg capitalize transition-all"
             style={{ background: tab === t ? 'var(--acc-dim)' : 'transparent', color: tab === t ? 'var(--acc)' : 'var(--txt3)', borderBottom: tab === t ? '2px solid var(--acc)' : '2px solid transparent', cursor: 'pointer' }}>
-            {t === 'dashboard' ? '🎛 AI Dashboard' : t === 'setup' ? '⚙️ AI Setup' : '📞 Call Logs'}
+            {t === 'dashboard' ? '🎛 AI Dashboard' : t === 'setup' ? '⚙️ AI Setup' : t === 'test' ? '🧪 Test AI' : '📞 Call Logs'}
           </button>
         ))}
         <div className="ml-auto">
@@ -278,6 +314,28 @@ export default function VoiceConfigPage() {
                   </FormField>
                 </div>
               </PageCard>
+
+              {/* AI Personality */}
+              <PageCard title="AI Personality" subtitle="Control how the AI sounds and behaves on calls">
+                <FormField label="Tone" hint="How the AI should sound to callers">
+                  <AppSelect
+                    value={config.booking_rules.tone}
+                    onChange={e => setConfig(c => ({ ...c, booking_rules: { ...c.booking_rules, tone: e.target.value } }))}
+                  >
+                    {TONES.map(t => <option key={t} value={t} className="capitalize">{t}</option>)}
+                  </AppSelect>
+                </FormField>
+                <div className="mt-3">
+                  <FormField label="Custom Instructions" hint="Extra rules for the AI — e.g. 'Always mention free parking', 'Don't quote fees', 'Offer teleconsultation'">
+                    <AppTextarea
+                      value={config.booking_rules.custom_instructions}
+                      onChange={e => setConfig(c => ({ ...c, booking_rules: { ...c.booking_rules, custom_instructions: e.target.value } }))}
+                      rows={4}
+                      placeholder="Always greet by clinic name. If asked about fees, say the front desk will confirm. Encourage morning slots."
+                    />
+                  </FormField>
+                </div>
+              </PageCard>
             </div>
 
             {/* Right column */}
@@ -378,6 +436,55 @@ export default function VoiceConfigPage() {
               </PageCard>
             </div>
           </div>
+        )}
+
+        {tab === 'test' && (
+          <PageCard title="🧪 Test Your AI Receptionist" subtitle="Chat with the AI exactly as a caller would — uses your saved greeting, knowledge base, doctors & personality. Save your changes first to test them.">
+            <div className="flex flex-col" style={{ height: 'calc(100vh - 260px)' }}>
+              <div className="flex-1 overflow-y-auto rounded-xl p-4 space-y-3"
+                style={{ background: 'var(--s1)', border: '1px solid var(--b2)' }}>
+                {chat.length === 0 && (
+                  <div className="text-center mt-12">
+                    <div className="text-4xl mb-3 opacity-40">🤖</div>
+                    <p className="text-sm" style={{ color: 'var(--txt3)' }}>
+                      Type a message like a patient would — e.g. <em>&quot;Mujhe appointment book karni hai&quot;</em>{' '}
+                    </p>
+                  </div>
+                )}
+                {chat.map((m, i) => (
+                  <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div className="max-w-[75%] rounded-2xl px-4 py-2.5 text-sm"
+                      style={{
+                        background: m.role === 'user' ? 'var(--acc)' : 'var(--s3)',
+                        color: m.role === 'user' ? '#fff' : 'var(--txt)',
+                        border: m.role === 'user' ? 'none' : '1px solid var(--b2)',
+                      }}>
+                      {m.content}
+                    </div>
+                  </div>
+                ))}
+                {chatBusy && (
+                  <div className="flex justify-start">
+                    <div className="rounded-2xl px-4 py-2.5 text-sm" style={{ background: 'var(--s3)', color: 'var(--txt3)', border: '1px solid var(--b2)' }}>
+                      typing…
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center gap-2 mt-3">
+                <input
+                  value={chatInput}
+                  onChange={e => setChatInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') sendChat() }}
+                  placeholder="Type a patient message and press Enter…"
+                  className="flex-1 rounded-lg px-4 py-2.5 text-sm outline-none"
+                  style={{ background: 'var(--s2)', border: '1px solid var(--b2)', color: 'var(--txt)' }}
+                />
+                <AppBtn onClick={sendChat} disabled={chatBusy || !chatInput.trim()}>Send</AppBtn>
+                {chat.length > 0 && <AppBtn variant="secondary" onClick={() => setChat([])}>Clear</AppBtn>}
+              </div>
+            </div>
+          </PageCard>
         )}
 
         {tab === 'logs' && (

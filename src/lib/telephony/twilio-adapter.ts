@@ -129,7 +129,7 @@ function applyInstruction(vr: any, step: CallInstruction) {
         method: 'POST',
       })
       gather.say(
-        { language: step.language || 'en-IN', voice: 'Polly.Aditi' },
+        { language: step.language || 'en-IN', voice: step.voice || 'Polly.Aditi' },
         step.prompt,
       )
       return

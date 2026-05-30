@@ -7,6 +7,7 @@ import {
   readFormBody,
   type CallInstruction,
 } from '@/lib/telephony'
+import { resolveVoice } from '@/lib/telephony/voices'
 
 /**
  * POST /api/voice/incoming-call
@@ -205,6 +206,9 @@ export async function POST(req: NextRequest) {
     agentConfig.greeting_message ||
     `Hello, you've reached ${clinic.name}. How can I help you today?`
 
+  const voiceProfile = resolveVoice(agentConfig.voice_type)
+  const greetingLanguage = agentConfig.language || voiceProfile.language
+
   const instructions: CallInstruction[] = process.env.VOICE_WORKER_URL
     ? [
         {
@@ -221,7 +225,8 @@ export async function POST(req: NextRequest) {
         {
           kind: 'gather',
           prompt: greeting,
-          language: agentConfig.language || 'en-IN',
+          language: greetingLanguage,
+          voice: voiceProfile.polly,
           timeoutSec: agentConfig.silence_timeout_sec || 5,
           actionUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/voice/turn?callId=${call.id}`,
         },
