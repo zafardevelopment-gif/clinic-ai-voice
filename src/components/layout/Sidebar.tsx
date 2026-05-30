@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
 
 interface NavItem {
   icon: string
@@ -95,6 +96,17 @@ export default function Sidebar({ role, userName, clinicName }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const nav = role === 'admin' ? adminNav : clinicNav
+  const [open, setOpen] = useState(false)
+
+  // Topbar's hamburger dispatches this event to open the mobile drawer.
+  useEffect(() => {
+    const openHandler = () => setOpen(true)
+    window.addEventListener('toggle-sidebar', openHandler)
+    return () => window.removeEventListener('toggle-sidebar', openHandler)
+  }, [])
+
+  // Close the drawer whenever the route changes (mobile).
+  useEffect(() => { setOpen(false) }, [pathname])
 
   async function handleLogout() {
     await fetch('/api/auth/logout', { method: 'POST' })
@@ -102,7 +114,19 @@ export default function Sidebar({ role, userName, clinicName }: SidebarProps) {
   }
 
   return (
-    <aside className="flex flex-col" style={{ width: 230, minWidth: 230, background: 'var(--s1)', borderRight: '1px solid var(--b1)', overflowY: 'auto' }}>
+    <>
+      {/* Mobile overlay */}
+      {open && (
+        <div
+          onClick={() => setOpen(false)}
+          className="fixed inset-0 z-40 md:hidden"
+          style={{ background: 'rgba(0,0,0,0.45)' }}
+        />
+      )}
+      <aside
+        className={`flex flex-col fixed md:static inset-y-0 left-0 z-50 transition-transform duration-200 md:translate-x-0 ${open ? 'translate-x-0' : '-translate-x-full'}`}
+        style={{ width: 230, minWidth: 230, background: 'var(--s1)', borderRight: '1px solid var(--b1)', overflowY: 'auto' }}
+      >
       {/* Logo */}
       <div className="flex items-center gap-2.5 px-4 py-5" style={{ borderBottom: '1px solid var(--b1)' }}>
         <div className="flex items-center justify-center text-base flex-shrink-0 rounded-[10px]"
@@ -115,6 +139,15 @@ export default function Sidebar({ role, userName, clinicName }: SidebarProps) {
             {role === 'admin' ? 'Super Admin' : 'Clinic Panel'}
           </div>
         </div>
+        {/* Mobile close */}
+        <button
+          onClick={() => setOpen(false)}
+          className="ml-auto md:hidden flex items-center justify-center rounded-lg"
+          style={{ width: 30, height: 30, border: '1px solid var(--b2)', color: 'var(--txt2)', cursor: 'pointer' }}
+          aria-label="Close menu"
+        >
+          ✕
+        </button>
       </div>
 
       {/* Navigation */}
@@ -177,5 +210,6 @@ export default function Sidebar({ role, userName, clinicName }: SidebarProps) {
         </div>
       </div>
     </aside>
+    </>
   )
 }

@@ -131,3 +131,24 @@
 .animate-modalIn   { animation: modalIn .25s ease; }
 .animate-livePulse { animation: livePulse 1.8s infinite; }
 .animate-aiPulse   { animation: aiPulse 1.5s infinite; }
+
+/* ── Mobile responsiveness (≤640px) ─────────────────────────────────────────
+   App-wide fixes so the admin/clinic dashboards work on phones without editing
+   every page individually. */
+@media (max-width: 640px) {
+  /* Any wide table gets horizontal scroll instead of breaking the layout. */
+  table {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+  /* Collapse 2/3-column grids to a single column on small screens. */
+  .grid.grid-cols-2,
+  .grid.grid-cols-3 {
+    grid-template-columns: 1fr !important;
+  }
+  /* Tighter page padding on phones. */
+  .p-6 { padding: 1rem !important; }
+}
