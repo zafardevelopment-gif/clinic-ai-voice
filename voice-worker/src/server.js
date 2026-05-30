@@ -59,31 +59,31 @@ wss.on('connection', (ws, req) => {
     }
   }
 
-  // Speak text: synthesize via Sarvam and stream to Twilio. The spoken language
-  // follows the reply text (so the AI can answer in Bengali, Tamil, etc.), with
-  // Hindi as the fallback for scripts Sarvam TTS doesn't voice (e.g. Maithili).
-  async function speak(text) {
-    if (!text || closed) return
-    botSpeaking = true
+  // Synthesize ONE chunk of text via Sarvam and stream it to Twilio, waiting
+  // the real playback duration. Caller must hold botSpeaking around the whole
+  // turn. Spoken language follows the text (Bengali/Tamil/etc.), Hindi fallback.
+  async function speakChunk(text) {
+    const t = (text || '').trim()
+    if (!t || closed) return
     try {
-      const ttsLang = detectTtsLanguage(text, session?.language || 'hi-IN')
-      const audio = await synthesize(text, ttsLang, session?.speaker || 'anushka')
-      console.log(`[${callId}] speaking ${audio.length} bytes (${ttsLang})`)
-      // Send all frames immediately; Twilio plays them at real time. Then keep
-      // botSpeaking true for the actual playback duration (8000 bytes/sec for
-      // mulaw @ 8kHz) plus a small tail, so we don't hear our own audio.
+      const ttsLang = detectTtsLanguage(t, session?.language || 'hi-IN')
+      const audio = await synthesize(t, ttsLang, session?.speaker || 'anushka')
+      console.log(`[${callId}] speaking ${audio.length} bytes (${ttsLang}): ${t.slice(0, 40)}`)
       sendAudio(audio)
-      const playMs = Math.round((audio.length / 8000) * 1000) + 150
+      const playMs = Math.round((audio.length / 8000) * 1000) + 120
       await new Promise(r => setTimeout(r, playMs))
     } catch (err) {
       console.error('[ws] TTS failed:', err.message)
-    } finally {
+    }
+  }
+
+  // Speak a standalone line (greeting / error), managing botSpeaking itself.
+  async function speak(text) {
+    if (!text || closed) return
+    botSpeaking = true
+    try { await speakChunk(text) } finally {
       botSpeaking = false
-      // Reset VAD so the next caller turn starts clean.
-      speechFrames = []
-      speaking = false
-      speechMs = 0
-      silenceMs = 0
+      speechFrames = []; speaking = false; speechMs = 0; silenceMs = 0
     }
   }
 
@@ -93,21 +93,22 @@ wss.on('connection', (ws, req) => {
     speechFrames = []
     if (!frames.length) return
     processing = true
+    botSpeaking = true // hold the mic for the whole turn (STT + streamed reply)
     try {
       const audio = Buffer.concat(frames)
-      const transcript = await transcribe(audio, session.language === 'hi-IN' ? 'unknown' : 'unknown')
-      if (!transcript) { processing = false; return }
+      const transcript = await transcribe(audio, 'unknown')
+      if (!transcript) { return }
       console.log(`[${callId}] caller: ${transcript}`)
-      const { reply, end } = await runTurn(session, transcript)
-      console.log(`[${callId}] ai: ${reply}`)
-      await speak(reply)
+      // Stream the reply: each sentence is spoken as soon as it's ready.
+      const { end } = await runTurn(session, transcript, speakChunk)
       if (end) {
-        // Give audio a moment to flush, then close.
-        setTimeout(() => { try { ws.close() } catch {} }, 1500)
+        setTimeout(() => { try { ws.close() } catch {} }, 1200)
       }
     } catch (err) {
       console.error('[ws] utterance error:', err.message)
     } finally {
+      botSpeaking = false
+      speechFrames = []; speaking = false; speechMs = 0; silenceMs = 0
       processing = false
     }
   }

@@ -55,42 +55,93 @@ export async function createSession(callId) {
 }
 
 /**
- * Run one turn: append the caller's transcript, get the AI reply, persist both
- * sides, create a booking if tagged, and report whether to end the call.
- * @returns {Promise<{ reply: string, end: boolean }>}
+ * Run one turn with STREAMING: the model's reply is read token-by-token, and
+ * each complete sentence is handed to `onSentence` immediately so it can be
+ * spoken while the rest is still generating (much lower perceived latency).
+ *
+ * Tags ([BOOK ...]/[END]) are stripped from spoken text. If a booking tag is
+ * present we run it after streaming and speak the booking result instead.
+ *
+ * @param {object} session
+ * @param {string} transcript
+ * @param {(sentence: string) => Promise<void>} onSentence speak a chunk now
+ * @returns {Promise<{ end: boolean }>}
  */
-export async function runTurn(session, transcript) {
+export async function runTurn(session, transcript, onSentence) {
   session.messages.push({ role: 'user', content: transcript })
 
-  let raw
+  let raw = ''
+  let spokenSoFar = ''     // chars already flushed to onSentence
+  let pending = ''         // buffer holding un-flushed text
+  let sawTag = false       // once a '[' appears, stop speaking (tag territory)
+
+  // Flush any complete sentences from `pending` to onSentence.
+  async function flush(force = false) {
+    if (sawTag) return
+    // If a tag starts, only speak the text before it.
+    const tagIdx = pending.indexOf('[')
+    if (tagIdx >= 0) {
+      const speakable = pending.slice(0, tagIdx).trim()
+      if (speakable) { await onSentence(speakable); spokenSoFar += speakable }
+      pending = pending.slice(tagIdx)
+      sawTag = true
+      return
+    }
+    // Speak on sentence boundaries; or everything if forced (stream ended).
+    const parts = pending.split(/(?<=[।.?!])\s+/)
+    if (!force && parts.length > 1) {
+      const ready = parts.slice(0, -1).join(' ').trim()
+      if (ready) { await onSentence(ready); spokenSoFar += ' ' + ready }
+      pending = parts[parts.length - 1]
+    } else if (force) {
+      const rest = pending.trim()
+      if (rest) { await onSentence(rest); spokenSoFar += ' ' + rest }
+      pending = ''
+    }
+  }
+
   try {
-    const r = await llm.chat.completions.create({
+    const stream = await llm.chat.completions.create({
       model: MODEL,
       messages: session.messages,
       temperature: 0.3,
       max_tokens: 150,
+      stream: true,
     })
-    raw = (r.choices?.[0]?.message?.content || '').trim()
+    for await (const chunk of stream) {
+      const delta = chunk.choices?.[0]?.delta?.content || ''
+      if (!delta) continue
+      raw += delta
+      pending += delta
+      await flush(false)
+    }
+    await flush(true)
   } catch (err) {
-    console.error('[agent] LLM error:', err.message)
-    raw = 'Maaf kijiye, thodi dikkat ho rahi hai. Aap dobara bata sakte hain?'
+    console.error('[agent] LLM stream error:', err.message)
+    if (!raw) {
+      const msg = 'Maaf kijiye, thodi dikkat ho rahi hai. Aap dobara bata sakte hain?'
+      raw = msg
+      await onSentence(msg)
+    }
   }
 
   const { reply: cleaned, booking, end: endTag } = parseTags(raw)
-  let reply = cleaned
   let end = endTag
+  let savedReply = cleaned
 
+  // If a booking was requested, run it and speak the real confirmation now.
   if (booking) {
     const r = await tryBook(session, booking)
-    reply = r.message
+    savedReply = r.message
+    await onSentence(r.message)
     if (r.booked) end = true
   }
 
-  session.messages.push({ role: 'assistant', content: reply })
-  await saveTurn(session.callId, transcript, reply)
+  session.messages.push({ role: 'assistant', content: savedReply })
+  await saveTurn(session.callId, transcript, savedReply)
   if (end) await finalize(session)
 
-  return { reply, end }
+  return { end }
 }
 
 // ─── prompt + parsing (ported from turn/route.ts) ─────────────────────────────
