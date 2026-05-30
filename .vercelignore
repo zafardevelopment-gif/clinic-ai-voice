@@ -1,0 +1,4 @@
+# The voice-worker is a standalone Node WebSocket service deployed separately
+# (Render). Vercel only builds the Next.js app — keep the worker out of the
+# Vercel build entirely.
+voice-worker/
