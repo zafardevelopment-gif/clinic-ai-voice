@@ -45,12 +45,21 @@ wss.on('connection', (ws, req) => {
   let peakEnergy = 0           // diagnostics: loudest frame energy seen
   let botSpeaking = false      // ignore inbound audio while we're talking (echo)
 
-  // Send a chunk of mulaw audio back to Twilio as outbound media.
-  function sendAudio(mulawBuf) {
+  // Stream mulaw audio back to Twilio as outbound media. Twilio expects small
+  // frames (160 bytes = 20ms @ 8kHz mulaw), delivered at roughly real-time
+  // pace. Sending one giant chunk causes dropped/garbled playback — so we split
+  // into 160-byte frames and pace them ~20ms apart.
+  async function sendAudio(mulawBuf) {
     if (!streamSid || closed) return
-    // Twilio expects base64 payload in 'media' messages.
-    const payload = mulawBuf.toString('base64')
-    ws.send(JSON.stringify({ event: 'media', streamSid, media: { payload } }))
+    const FRAME = 160
+    for (let i = 0; i < mulawBuf.length; i += FRAME) {
+      if (closed) return
+      const frame = mulawBuf.subarray(i, i + FRAME)
+      const payload = frame.toString('base64')
+      ws.send(JSON.stringify({ event: 'media', streamSid, media: { payload } }))
+      // Pace ~every 20ms; batch the sleep every 10 frames to reduce overhead.
+      if ((i / FRAME) % 10 === 9) await new Promise(r => setTimeout(r, 180))
+    }
   }
 
   // Speak text: synthesize via Sarvam and stream to Twilio. The spoken language
@@ -62,14 +71,12 @@ wss.on('connection', (ws, req) => {
     try {
       const ttsLang = detectTtsLanguage(text, session?.language || 'hi-IN')
       const audio = await synthesize(text, ttsLang, session?.speaker || 'anushka')
-      // Send in ~3200-byte chunks (~0.4s) so Twilio plays smoothly.
-      for (let i = 0; i < audio.length; i += 3200) {
-        sendAudio(audio.subarray(i, i + 3200))
-      }
-      // Keep ignoring inbound for the playback duration (~1 byte/sample @ 8kHz)
-      // plus a small tail, so our own audio isn't picked up as caller speech.
-      const playMs = Math.round((audio.length / 8000) * 1000) + 400
-      await new Promise(r => setTimeout(r, playMs))
+      console.log(`[${callId}] speaking ${audio.length} bytes (${ttsLang})`)
+      // sendAudio paces 160-byte frames in real time, so this resolves roughly
+      // when playback finishes.
+      await sendAudio(audio)
+      // Small tail so the last frames flush before we listen again.
+      await new Promise(r => setTimeout(r, 300))
     } catch (err) {
       console.error('[ws] TTS failed:', err.message)
     } finally {
