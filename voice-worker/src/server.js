@@ -13,7 +13,7 @@ const VOICE_ENGINE = (process.env.VOICE_ENGINE || 'sarvam').toLowerCase()
 // Twilio sends 20ms mulaw frames (160 bytes) @ 8000 Hz. We accumulate frames
 // while the caller speaks and fire a turn after a short trailing silence.
 const FRAME_MS = 20
-const SILENCE_MS = 700          // trailing pause that ends a caller turn
+const SILENCE_MS = 500          // trailing pause that ends a caller turn
 const MIN_SPEECH_MS = 240       // ignore blips shorter than this
 const MAX_UTTERANCE_MS = 6000   // hard cap — force a turn so we never get stuck
 // Hysteresis: real speech (from logs) is ~0.15–0.25; phone-line noise can sit

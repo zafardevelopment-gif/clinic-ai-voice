@@ -15,9 +15,9 @@ const llm = new OpenAI({
   baseURL: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1',
   defaultHeaders: { 'X-Title': 'ClinicAI Voice Worker' },
 })
-// gpt-4o handles Hindi/Indian-language reasoning and instruction-following
-// noticeably better than the small models, which matters for a receptionist.
-const MODEL = process.env.VOICE_WORKER_MODEL || 'openai/gpt-4o'
+// gpt-4o-mini is much faster (~1s vs ~2s) and handles short receptionist
+// replies + the booking flow fine. Override with VOICE_WORKER_MODEL if needed.
+const MODEL = process.env.VOICE_WORKER_MODEL || 'openai/gpt-4o-mini'
 
 /**
  * Loads everything needed for a call and returns a session object that keeps
@@ -75,7 +75,7 @@ export async function runTurn(session, transcript) {
       model: MODEL,
       messages: session.messages,
       temperature: 0.3,
-      max_tokens: 120,
+      max_tokens: 80,
     })
     raw = (r.choices?.[0]?.message?.content || '').trim()
   } catch (err) {
@@ -131,7 +131,7 @@ export function buildPrompt(clinic, cfg, doctors, patientName) {
 
   return [
     `You are the AI phone receptionist for "${clinic.name || 'the clinic'}".`,
-    `You are on a LIVE phone call. Keep replies short (1-2 sentences), warm, natural when spoken.`,
+    `You are on a LIVE phone call. CRITICAL: keep every reply to ONE short sentence (max ~15 words). Ask only one thing at a time. Be warm but brief — long replies sound slow and robotic on the phone.`,
     tone ? `Tone: ${tone}.` : '',
     `Reply in whatever language the caller uses — Hindi, English, Hinglish, Urdu, Maithili, Bhojpuri, Bengali, etc. If the caller switches language or asks to speak another language (e.g. "Maithili mein baat karein"), continue naturally in that language. Never say you cannot speak a language.`,
     hours,
