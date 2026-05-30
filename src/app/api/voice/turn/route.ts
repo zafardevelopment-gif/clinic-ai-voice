@@ -7,7 +7,7 @@ import {
   readFormBody,
 } from '@/lib/telephony'
 import { resolveVoice } from '@/lib/telephony/voices'
-import { chatCompletion, parseJsonResponse, type LlmMessage } from '@/lib/ai/openrouter'
+import { chatCompletion, type LlmMessage } from '@/lib/ai/openrouter'
 
 interface DoctorRow {
   id: string
@@ -35,12 +35,6 @@ interface BookingPayload {
   appointment_date?: string // YYYY-MM-DD
   appointment_time?: string // HH:MM (24h)
   reason?: string
-}
-
-interface TurnResult {
-  reply: string
-  booking?: BookingPayload
-  end_call?: boolean
 }
 
 /**
@@ -218,30 +212,31 @@ async function handleTurn(
   }
   messages.push({ role: 'user', content: transcript })
 
-  // The model returns a small JSON object so we can both speak a reply AND
-  // take real actions (create the appointment) on the same turn.
-  let turn: TurnResult
+  // The model replies in PLAIN TEXT (fast, never truncates mid-JSON). It signals
+  // actions with compact tags at the end of its reply, which we strip before
+  // speaking:
+  //   [BOOK: name | doctor-or-department | YYYY-MM-DD | HH:MM]  → create booking
+  //   [END]                                                     → end the call
+  let raw: string
   try {
     const result = await chatCompletion(messages, {
       withFallback: true,
       temperature: 0.3,
       maxTokens: 150,
     })
-    turn = parseTurn(result.content)
+    raw = result.content?.trim() || ''
   } catch (err) {
     console.error('[voice/turn] LLM failed:', err)
-    turn = {
-      reply: 'I am having a little trouble right now. Could you please say that again?',
-      end_call: false,
-    }
+    raw = 'Sorry, I had a little trouble. Could you please say that again?'
   }
 
-  let spoken = turn.reply?.trim() || 'Sorry, could you please repeat that?'
-  let endCall = !!turn.end_call
+  const parsed = parseTags(raw)
+  let spoken = parsed.reply
+  let endCall = parsed.end
 
-  // If the model says the booking details are complete, actually create the
-  // appointment now and replace the spoken reply with a real confirmation.
-  if (turn.booking?.ready) {
+  // If the model emitted a [BOOK: ...] tag, actually create the appointment now
+  // and replace the spoken reply with a real confirmation.
+  if (parsed.booking) {
     const result = await tryBook({
       supabase,
       callId,
@@ -249,7 +244,7 @@ async function handleTurn(
       callerPhone: call.phone_number,
       existingPatientId: call.patient_id,
       doctors: activeDoctors,
-      booking: turn.booking,
+      booking: parsed.booking,
       language,
     })
     spoken = result.message
@@ -366,7 +361,7 @@ function systemPrompt(
     `You are the friendly AI phone receptionist for "${clinicName}".`,
     `You are on a LIVE phone call. Keep replies short (1-2 sentences), warm, natural when spoken.`,
     tone ? `Speak in a ${tone} tone.` : '',
-    `You may speak English, Hindi, or Hinglish to match the caller.`,
+    `Speak in whatever language the caller uses — English, Hindi, Hinglish, Urdu, Maithili, Bhojpuri, Bengali, or any other. Always match the caller's language.`,
     hours,
     caller,
     `Today is ${weekday}, ${todayStr}. Convert relative dates ("kal", "tomorrow", "Monday") into an exact YYYY-MM-DD date.`,
@@ -377,37 +372,58 @@ function systemPrompt(
     knowledge ? `\nClinic knowledge base:\n${knowledge}` : '',
     customInstructions ? `\nAdditional instructions from the clinic:\n${customInstructions}` : '',
     ``,
-    `BOOKING FLOW: Only when the caller clearly wants to BOOK an appointment, collect 4 things — patient name, a doctor or department from the list above, a date, and a time. Ask for whatever is missing, one at a time. Set booking.ready=true ONLY after you have all four and the caller confirms. Questions about fees, timings, doctors, or directions are NOT bookings — just answer them and keep booking.ready=false.`,
     `Never invent doctors, prices, or availability not given above. If asked about fees you were not told, say the front desk will confirm.`,
-    `If it sounds like a medical emergency, tell them to call emergency services immediately and set end_call=true.`,
+    `If it sounds like a medical emergency, tell them to call emergency services immediately.`,
     ``,
-    `ALWAYS respond with ONLY a JSON object (no prose, no markdown) in this exact shape:`,
-    `{"reply": "<what to say to the caller>", "booking": {"ready": false, "patient_name": "", "doctor_name": "", "department": "", "appointment_date": "", "appointment_time": "", "reason": ""}, "end_call": false}`,
-    `Rules: "reply" is required. Include "booking" only when the caller wants an appointment; set ready=true only when all details are gathered and confirmed. Set end_call=true when the caller is done and has nothing else.`,
+    `OUTPUT FORMAT — VERY IMPORTANT:`,
+    `Reply in PLAIN TEXT only (no JSON, no markdown, no code fences). Just the words you would speak.`,
+    `To BOOK an appointment you need 4 things: patient name, a doctor or department from the list, a date, and a time. Ask for whatever is missing, one at a time. Fee/timing/direction questions are NOT bookings — just answer them.`,
+    `ONLY after you have all 4 details AND the caller confirms, append this EXACT tag on its own at the very end of your reply: [BOOK: <name> | <doctor or department> | <YYYY-MM-DD> | <HH:MM 24h>]`,
+    `When the caller is finished and has nothing else, append [END] at the very end.`,
+    `Example final reply: "Perfect, booking it now. [BOOK: Iqbal | Wahaj | 2026-05-31 | 10:00] [END]"`,
+    `Keep the spoken part short; the tags are not spoken.`,
   ]
     .filter(Boolean)
     .join('\n')
 }
 
-// Parse the model's JSON turn. Falls back gracefully if it returns plain text.
-function parseTurn(content: string): TurnResult {
-  const raw = (content || '').trim()
-  try {
-    const obj = parseJsonResponse<TurnResult>(raw)
-    if (obj && typeof obj.reply === 'string') return obj
-  } catch {
-    // Not JSON — try to salvage an embedded object, else treat as plain reply.
-    const match = raw.match(/\{[\s\S]*\}/)
-    if (match) {
-      try {
-        const obj = JSON.parse(match[0]) as TurnResult
-        if (obj && typeof obj.reply === 'string') return obj
-      } catch {
-        /* fall through */
+// Extract [BOOK: ...] and [END] tags from a plain-text reply. Returns the
+// spoken text (tags removed), parsed booking (if any), and end flag. Tolerant
+// of a truncated trailing tag — the reply text is always preserved.
+function parseTags(raw: string): { reply: string; booking: BookingPayload | null; end: boolean } {
+  let text = raw
+
+  // Also strip any stray JSON/code fences a model might still emit.
+  text = text.replace(/```[a-z]*\n?/gi, '').trim()
+
+  const end = /\[END\]/i.test(text)
+  text = text.replace(/\[END\]/gi, '').trim()
+
+  let booking: BookingPayload | null = null
+  const bookMatch = text.match(/\[BOOK:\s*([^\]]*)\]?/i)
+  if (bookMatch) {
+    const parts = bookMatch[1].split('|').map(s => s.trim())
+    const [name, doctor, date, time] = parts
+    if (name) {
+      booking = {
+        ready: true,
+        patient_name: name,
+        doctor_name: doctor || undefined,
+        department: doctor || undefined,
+        appointment_date: date || undefined,
+        appointment_time: time || undefined,
       }
     }
+    text = text.replace(/\[BOOK:[^\]]*\]?/i, '').trim()
   }
-  return { reply: raw || 'Sorry, could you please repeat that?', end_call: false }
+
+  // If the model accidentally returned a JSON object, salvage the "reply" field.
+  if (text.startsWith('{')) {
+    const m = text.match(/"reply"\s*:\s*"([^"]+)"/)
+    if (m) text = m[1]
+  }
+
+  return { reply: text || 'Sorry, could you please repeat that?', booking, end }
 }
 
 // Attempt to create the appointment. Returns a spoken message and whether it
