@@ -62,7 +62,7 @@ export async function createSession(callId) {
     language: cfg?.language || 'hi-IN',
     speaker: speakerFor(cfg?.voice_type),
     messages: [{ role: 'system', content: baseSystem }],
-    greeting: cfg?.greeting_message || `Namaste! ${clinic.name || ''} mein aapka swagat hai. Main aapki kaise madad kar sakta hoon?`,
+    greeting: clarifyGreeting(cfg?.greeting_message, clinic.name),
     // For the OpenAI Realtime path: same context, but booking is done via the
     // book_appointment function tool instead of [BOOK] tags.
     realtimeInstructions:
@@ -188,7 +188,7 @@ export function buildPrompt(clinic, cfg, doctors, patientName, availabilityText)
     // Data-driven rule: whatever detail appears in the Doctors list is allowed
     // to be shared (the clinic chose this via settings); whatever is absent must
     // be deferred. This makes the per-clinic toggles authoritative.
-    `IMPORTANT: If a doctor detail (fee, experience, qualifications, languages) is shown in the Doctors list above, tell the caller that exact value when asked (e.g. "डॉक्टर वहाद की फ़ीस ₹500 है"). If a detail is NOT shown above, say the front desk will confirm it — do not guess. Ignore any older instruction/FAQ that conflicts with this.`,
+    `IMPORTANT: If a doctor detail (fee, experience, qualifications, languages) is shown in the Doctors list above, tell the caller that exact value when asked. When saying a fee, ALWAYS speak the number with the word "रुपये" (or "rupees" in English) — e.g. "डॉक्टर वहाद की फ़ीस 500 रुपये है" — NEVER use the ₹ symbol or "Rs", because the voice cannot pronounce them. If a detail is NOT shown above, say the front desk will confirm it — do not guess. Ignore any older instruction/FAQ that conflicts with this.`,
     ``,
     `Reply in PLAIN TEXT only (no JSON/markdown).`,
     ``,
@@ -325,6 +325,26 @@ export async function finalize(session) {
     if (!c?.outcome) upd.outcome = 'not_booked'
     if (Object.keys(upd).length) await db.from('calls').update(upd).eq('id', session.callId)
   } catch (e) { console.error('[agent] finalize:', e.message) }
+}
+
+// Make the greeting clearly announce the clinic name FIRST, so a caller can
+// tell which clinic they reached even if the rest is spoken quickly. If the
+// greeting already starts with the clinic name we leave it; otherwise we
+// front-load "<Clinic name>." with a pause before the configured greeting.
+function clarifyGreeting(greeting, clinicName) {
+  const name = (clinicName || '').trim()
+  const g = (greeting || '').trim()
+  if (!g) {
+    // Default fallback: name first, then offer help — natural pause via comma.
+    return name
+      ? `नमस्ते, ${name} में आपका स्वागत है। मैं आपकी कैसे मदद कर सकता हूँ?`
+      : `नमस्ते! मैं आपकी कैसे मदद कर सकता हूँ?`
+  }
+  if (!name) return g
+  // Already mentions the name near the start? Leave as-is.
+  if (g.slice(0, Math.max(40, name.length + 15)).toLowerCase().includes(name.toLowerCase())) return g
+  // Otherwise lead with the clinic name + a clear pause.
+  return `${name}. ${g}`
 }
 
 // Build a per-doctor availability summary for TODAY (in IST), including the

@@ -91,12 +91,12 @@ wss.on('connection', (ws, req) => {
   // Synthesize ONE chunk of text via Sarvam and stream it to Twilio, waiting
   // the real playback duration. Caller must hold botSpeaking around the whole
   // turn. Spoken language follows the text (Bengali/Tamil/etc.), Hindi fallback.
-  async function speakChunk(text) {
+  async function speakChunk(text, pace = 1.0) {
     const t = (text || '').trim()
     if (!t || closed) return
     try {
       const ttsLang = detectTtsLanguage(t, session?.language || 'hi-IN')
-      const audio = await synthesize(t, ttsLang, session?.speaker || 'anushka')
+      const audio = await synthesize(t, ttsLang, session?.speaker || 'anushka', pace)
       console.log(`[${callId}] speaking ${audio.length} bytes (${ttsLang}): ${t.slice(0, 40)}`)
       sendAudio(audio)
       const playMs = Math.round((audio.length / 8000) * 1000) + 120
@@ -107,10 +107,10 @@ wss.on('connection', (ws, req) => {
   }
 
   // Speak a standalone line (greeting / error), managing botSpeaking itself.
-  async function speak(text) {
+  async function speak(text, pace = 1.0) {
     if (!text || closed) return
     botSpeaking = true
-    try { await speakChunk(text) } finally {
+    try { await speakChunk(text, pace) } finally {
       botSpeaking = false
       speechFrames = []; speaking = false; speechMs = 0; silenceMs = 0
     }
@@ -157,7 +157,8 @@ wss.on('connection', (ws, req) => {
         if (!callId) { ws.close(); return }
         try {
           session = await createSession(callId)
-          await speak(session.greeting)
+          // Slightly slower greeting (pace 0.9) so the clinic name is clear.
+          await speak(session.greeting, 0.9)
         } catch (err) {
           // Never drop the call silently. Greet with a safe fallback so the
           // caller hears something and the line stays open for the front desk.

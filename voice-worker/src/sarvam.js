@@ -44,7 +44,7 @@ export async function transcribe(mulawBuffer, languageCode = 'unknown') {
  * @param {string} speaker Sarvam voice id (e.g. 'anushka', 'abhilash')
  * @returns {Promise<Buffer>} raw mulaw bytes @ 8000 Hz
  */
-export async function synthesize(text, targetLanguage = 'hi-IN', speaker = 'anushka') {
+export async function synthesize(text, targetLanguage = 'hi-IN', speaker = 'anushka', pace = 1.0) {
   const res = await fetch(`${SARVAM_URL}/text-to-speech`, {
     method: 'POST',
     headers: {
@@ -52,12 +52,15 @@ export async function synthesize(text, targetLanguage = 'hi-IN', speaker = 'anus
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      text: text.slice(0, 1500),
+      text: speakableText(text, targetLanguage).slice(0, 1500),
       target_language_code: targetLanguage,
       speaker,
       model: 'bulbul:v2',
       speech_sample_rate: 8000,
       output_audio_codec: 'mulaw',
+      // pace < 1.0 = slower, clearer speech. Used to slow the greeting so the
+      // clinic name is easy to catch.
+      pace,
     }),
   })
   if (!res.ok) {
@@ -67,6 +70,26 @@ export async function synthesize(text, targetLanguage = 'hi-IN', speaker = 'anus
   const data = await res.json()
   const b64 = (data.audios && data.audios[0]) || ''
   return Buffer.from(b64, 'base64')
+}
+
+/**
+ * Make text pronounce correctly in TTS. Sarvam often drops/garbles the rupee
+ * symbol and currency abbreviations, so the AI's "₹500" came out as just the
+ * doctor's name with no amount. We convert currency markers before a number
+ * into a spoken word AFTER the number (natural word order in Hindi/English):
+ *   "₹500" / "Rs 500" / "Rs. 500" / "INR 500"  →  "500 रुपये" (or "500 rupees")
+ */
+export function speakableText(text, targetLanguage = 'hi-IN') {
+  let t = text || ''
+  const isEnglish = targetLanguage === 'en-IN'
+  const rupeeWord = isEnglish ? 'rupees' : 'रुपये'
+  // ₹ 500 / ₹500
+  t = t.replace(/₹\s?(\d[\d,]*)/g, `$1 ${rupeeWord}`)
+  // Rs 500 / Rs. 500 / INR 500 (case-insensitive, optional dot/space)
+  t = t.replace(/\b(?:rs\.?|inr)\s?(\d[\d,]*)/gi, `$1 ${rupeeWord}`)
+  // Any leftover stray rupee symbol → spoken word
+  t = t.replace(/₹/g, ` ${rupeeWord} `)
+  return t.replace(/\s{2,}/g, ' ').trim()
 }
 
 // Languages Sarvam TTS can actually speak. Anything else falls back to Hindi
