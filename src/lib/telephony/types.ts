@@ -48,9 +48,10 @@ export interface CallStatusPayload {
  * The adapter translates this into provider-specific XML (TwiML / ExoML).
  */
 export type CallInstruction =
-  | { kind: 'say'; text: string; language?: string; voice?: string }
+  // `rate` is an optional speaking speed (SSML prosody rate, e.g. '110%').
+  | { kind: 'say'; text: string; language?: string; voice?: string; rate?: string }
   | { kind: 'play'; url: string }
-  | { kind: 'gather'; prompt: string; language?: string; timeoutSec?: number; actionUrl: string; voice?: string }
+  | { kind: 'gather'; prompt: string; language?: string; timeoutSec?: number; actionUrl: string; voice?: string; rate?: string }
   | { kind: 'connectStream'; wsUrl: string; metadata?: Record<string, string> }
   | { kind: 'dial'; number: string }
   | { kind: 'hangup'; reason?: string }

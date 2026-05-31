@@ -202,12 +202,16 @@ export async function POST(req: NextRequest) {
   //    - If a voice worker WebSocket is configured, hand the audio off to it.
   //    - Otherwise fall back to <Gather> mode: play greeting, collect speech,
   //      and post it to /api/voice/process-intent on the next turn.
+  // Keep the greeting short — a long welcome makes the call feel slow before
+  // the caller can even speak. Clinics can override via greeting_message.
   const greeting =
     agentConfig.greeting_message ||
-    `Hello, you've reached ${clinic.name}. How can I help you today?`
+    `${clinic.name}. How can I help?`
 
   const voiceProfile = resolveVoice(agentConfig.voice_type)
   const greetingLanguage = agentConfig.language || voiceProfile.language
+  // Speak ~10% faster than default so prompts don't drag. Tune per taste.
+  const speechRate = agentConfig.speech_rate || '110%'
 
   const instructions: CallInstruction[] = process.env.VOICE_WORKER_URL
     ? [
@@ -227,7 +231,9 @@ export async function POST(req: NextRequest) {
           prompt: greeting,
           language: greetingLanguage,
           voice: voiceProfile.polly,
-          timeoutSec: agentConfig.silence_timeout_sec || 5,
+          rate: speechRate,
+          // Give callers longer to start speaking before we re-prompt.
+          timeoutSec: agentConfig.silence_timeout_sec || 8,
           actionUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/voice/turn?callId=${call.id}`,
         },
       ]

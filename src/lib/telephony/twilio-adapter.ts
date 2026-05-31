@@ -101,15 +101,14 @@ export const twilioAdapter: TelephonyProvider = {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function applyInstruction(vr: any, step: CallInstruction) {
   switch (step.kind) {
-    case 'say':
-      vr.say(
-        {
-          language: step.language || 'en-IN',
-          voice: step.voice || 'Polly.Aditi',
-        },
-        step.text,
-      )
+    case 'say': {
+      const say = vr.say({
+        language: step.language || 'en-IN',
+        voice: step.voice || 'Polly.Aditi',
+      })
+      speak(say, step.text, step.rate)
       return
+    }
     case 'play':
       vr.play(step.url)
       return
@@ -128,10 +127,11 @@ function applyInstruction(vr: any, step: CallInstruction) {
         action: step.actionUrl,
         method: 'POST',
       })
-      gather.say(
-        { language: step.language || 'en-IN', voice: step.voice || 'Polly.Aditi' },
-        step.prompt,
-      )
+      const say = gather.say({
+        language: step.language || 'en-IN',
+        voice: step.voice || 'Polly.Aditi',
+      })
+      speak(say, step.prompt, step.rate)
       return
     }
     case 'connectStream': {
@@ -150,5 +150,19 @@ function applyInstruction(vr: any, step: CallInstruction) {
     case 'hangup':
       vr.hangup()
       return
+  }
+}
+
+/**
+ * Speak `text` inside a <Say>. When `rate` is given (e.g. '110%'), wrap the
+ * words in SSML <prosody rate="..."> so Polly speaks faster/slower. Without a
+ * rate we add the text plainly (Twilio escapes it for us).
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function speak(say: any, text: string, rate?: string) {
+  if (rate) {
+    say.prosody({ rate }, text)
+  } else {
+    say.addText(text)
   }
 }

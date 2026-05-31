@@ -54,7 +54,7 @@ interface BookingPayload {
  *      conversation continues — until the caller hangs up or goes silent.
  */
 
-const MAX_TURNS = 12 // safety cap so a call can't loop forever
+const MAX_TURNS = 20 // safety cap so a call can't loop forever (longer conversations allowed)
 
 export async function POST(req: NextRequest) {
   const provider = getTelephonyProvider()
@@ -159,6 +159,9 @@ async function handleTurn(
   const voiceProfile = resolveVoice(agentConfig?.voice_type)
   const language = agentConfig?.language || voiceProfile.language
   const voice = voiceProfile.polly
+  // Speaking speed + how long we wait for the caller to start/finish talking.
+  const rate = agentConfig?.speech_rate || '110%'
+  const silenceTimeout = agentConfig?.silence_timeout_sec || 8
   const clinic = (call.clinics as ClinicRow | null) || null
   const clinicName = clinic?.name || 'the clinic'
   const patientName =
@@ -176,7 +179,8 @@ async function handleTurn(
           prompt: 'Sorry, I did not catch that. Could you please say it again?',
           language,
           voice,
-          timeoutSec: agentConfig?.silence_timeout_sec || 5,
+          rate,
+          timeoutSec: silenceTimeout,
           actionUrl: turnUrl,
         },
       ]),
@@ -194,6 +198,7 @@ async function handleTurn(
           text: 'Thank you for calling. Our team will follow up with you shortly. Goodbye.',
           language,
           voice,
+          rate,
         },
         { kind: 'hangup' },
       ]),
@@ -258,7 +263,7 @@ async function handleTurn(
     await finalizeCall(supabase, callId, call.created_at)
     return xml(
       provider.buildResponse([
-        { kind: 'say', text: spoken, language, voice },
+        { kind: 'say', text: spoken, language, voice, rate },
         { kind: 'hangup' },
       ]),
     )
@@ -271,7 +276,8 @@ async function handleTurn(
         prompt: spoken,
         language,
         voice,
-        timeoutSec: agentConfig?.silence_timeout_sec || 5,
+        rate,
+        timeoutSec: silenceTimeout,
         actionUrl: turnUrl,
       },
     ]),
