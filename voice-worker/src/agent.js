@@ -33,7 +33,7 @@ export async function createSession(callId) {
 
   const [{ data: cfg }, { data: doctors }] = await Promise.all([
     db.from('voice_agent_config').select('*').eq('clinic_id', call.clinic_id).single(),
-    db.from('doctors').select('id, full_name, specialization, department_id, is_active, departments(name)').eq('clinic_id', call.clinic_id).eq('is_active', true),
+    db.from('doctors').select('id, full_name, specialization, department_id, is_active, years_of_experience, qualifications, consultation_fee, languages_spoken, bio, departments(name)').eq('clinic_id', call.clinic_id).eq('is_active', true),
   ])
 
   const clinic = call.clinics || {}
@@ -118,7 +118,20 @@ export function buildPrompt(clinic, cfg, doctors, patientName) {
     clinic.email ? `Email: ${clinic.email}` : '',
   ].filter(Boolean).join('\n')
   const docList = doctors.length
-    ? doctors.map(d => `- ${d.full_name}${d.specialization ? ` (${d.specialization})` : ''}${d.departments?.name ? ` — ${d.departments.name}` : ''}`).join('\n')
+    ? doctors.map(d => {
+        // Header line: name (specialization) — department
+        const head = `- ${d.full_name}${d.specialization ? ` (${d.specialization})` : ''}${d.departments?.name ? ` — ${d.departments.name}` : ''}`
+        // Detail bullets so the AI can answer fee/experience/qualification
+        // questions directly instead of deflecting to the front desk.
+        const facts = [
+          d.qualifications ? `Qualifications: ${d.qualifications}` : '',
+          d.years_of_experience != null ? `Experience: ${d.years_of_experience} years` : '',
+          d.consultation_fee != null ? `Consultation fee: Rs ${d.consultation_fee}` : '',
+          Array.isArray(d.languages_spoken) && d.languages_spoken.length ? `Speaks: ${d.languages_spoken.join(', ')}` : '',
+          d.bio ? `About: ${d.bio}` : '',
+        ].filter(Boolean)
+        return facts.length ? `${head}\n  ${facts.join('; ')}` : head
+      }).join('\n')
     : '(No doctors configured — tell caller the front desk will confirm.)'
   const ak = cfg?.ai_knowledge || {}
   const knowledge = [
@@ -150,7 +163,7 @@ export function buildPrompt(clinic, cfg, doctors, patientName) {
     `3. Date: ask which day.`,
     `4. Time: ask what time.`,
     `Once you have doctor + name + date + time, read them back ONCE for confirmation. When the caller says yes/haan/theek hai, append at the very end: [BOOK: <name> | <doctor or department> | <YYYY-MM-DD> | <HH:MM 24h>]`,
-    `Fee/timing/direction questions are NOT bookings — answer briefly and continue.`,
+    `Fee/experience/qualification/language questions are NOT bookings — answer them directly from the doctor details above (e.g. state the exact consultation fee or years of experience), then continue. Only say the front desk will confirm if that specific detail is genuinely missing from the list.`,
     `When the caller is done, append [END]. Tags are never spoken.`,
   ].filter(Boolean).join('\n')
 }
