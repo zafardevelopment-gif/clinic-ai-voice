@@ -31,10 +31,18 @@ export async function createSession(callId) {
     .single()
   if (!call) throw new Error('call not found: ' + callId)
 
-  const [{ data: cfg }, { data: doctors }] = await Promise.all([
+  // Doctors query is wrapped so a schema/relation error can NEVER stop the
+  // greeting — a failed doctor list just degrades to an empty list.
+  const [{ data: cfg }, doctorsRes] = await Promise.all([
     db.from('voice_agent_config').select('*').eq('clinic_id', call.clinic_id).single(),
-    db.from('doctors').select('id, full_name, specialization, department_id, is_active, years_of_experience, qualifications, consultation_fee, languages_spoken, bio, slot_duration_minutes, booking_min_hours, departments(name), doctor_availability(day_of_week, start_time, end_time, is_available)').eq('clinic_id', call.clinic_id).eq('is_active', true),
+    db.from('doctors')
+      .select('id, full_name, specialization, department_id, is_active, years_of_experience, qualifications, consultation_fee, languages_spoken, bio, slot_duration_minutes, booking_min_hours, departments(name), doctor_availability(day_of_week, start_time, end_time, is_available)')
+      .eq('clinic_id', call.clinic_id)
+      .eq('is_active', true)
+      .then(r => r, err => ({ data: null, error: err })),
   ])
+  if (doctorsRes?.error) console.error('[agent] doctors query failed:', doctorsRes.error.message || doctorsRes.error)
+  const doctors = doctorsRes?.data || []
 
   const clinic = call.clinics || {}
   const patientName = call.patients?.full_name || null

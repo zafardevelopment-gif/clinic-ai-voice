@@ -159,8 +159,14 @@ wss.on('connection', (ws, req) => {
           session = await createSession(callId)
           await speak(session.greeting)
         } catch (err) {
-          console.error('[ws] session init failed:', err.message)
-          ws.close()
+          // Never drop the call silently. Greet with a safe fallback so the
+          // caller hears something and the line stays open for the front desk.
+          console.error('[ws] session init failed:', err?.message || err)
+          try { await speak('Namaste! Ek minute, main aapki call connect kar raha hoon.') } catch {}
+          // Give a minimal session so the conversation loop doesn't crash.
+          if (!session) {
+            session = { callId, messages: [{ role: 'system', content: 'You are a clinic phone receptionist. Be brief and helpful.' }], doctors: [], language: 'hi-IN', speaker: 'anushka' }
+          }
         }
         break
       }
