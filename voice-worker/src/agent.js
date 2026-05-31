@@ -33,12 +33,15 @@ export async function createSession(callId) {
 
   const [{ data: cfg }, { data: doctors }] = await Promise.all([
     db.from('voice_agent_config').select('*').eq('clinic_id', call.clinic_id).single(),
-    db.from('doctors').select('id, full_name, specialization, department_id, is_active, years_of_experience, qualifications, consultation_fee, languages_spoken, bio, departments(name)').eq('clinic_id', call.clinic_id).eq('is_active', true),
+    db.from('doctors').select('id, full_name, specialization, department_id, is_active, years_of_experience, qualifications, consultation_fee, languages_spoken, bio, slot_duration_minutes, booking_min_hours, departments(name), doctor_availability(day_of_week, start_time, end_time, is_available)').eq('clinic_id', call.clinic_id).eq('is_active', true),
   ])
 
   const clinic = call.clinics || {}
   const patientName = call.patients?.full_name || null
-  const system = buildPrompt(clinic, cfg, doctors || [], patientName)
+  // Compute today's open slots per doctor so the AI can answer "is Dr X
+  // available now / is a slot open today?" without a tool call.
+  const availabilityText = await buildAvailabilityText(doctors || [])
+  const system = buildPrompt(clinic, cfg, doctors || [], patientName, availabilityText)
 
   return {
     callId,
@@ -102,7 +105,7 @@ export async function runTurn(session, transcript) {
 
 // ─── prompt + parsing (ported from turn/route.ts) ─────────────────────────────
 
-export function buildPrompt(clinic, cfg, doctors, patientName) {
+export function buildPrompt(clinic, cfg, doctors, patientName, availabilityText) {
   const today = new Date()
   const todayStr = today.toISOString().slice(0, 10)
   const weekday = today.toLocaleDateString('en-US', { weekday: 'long' })
@@ -117,17 +120,22 @@ export function buildPrompt(clinic, cfg, doctors, patientName) {
     clinic.phone ? `Phone: ${clinic.phone}` : '',
     clinic.email ? `Email: ${clinic.email}` : '',
   ].filter(Boolean).join('\n')
+  // Per-clinic toggles for which doctor details the AI may share. Defaults to
+  // sharing everything when not configured.
+  const share = cfg?.booking_rules?.share_doctor_info || {}
+  const may = (key) => share[key] !== false
   const docList = doctors.length
     ? doctors.map(d => {
-        // Header line: name (specialization) — department
-        const head = `- ${d.full_name}${d.specialization ? ` (${d.specialization})` : ''}${d.departments?.name ? ` — ${d.departments.name}` : ''}`
-        // Detail bullets so the AI can answer fee/experience/qualification
-        // questions directly instead of deflecting to the front desk.
+        // Header line: name (specialization, if allowed) — department
+        const spec = may('specialization') && d.specialization ? ` (${d.specialization})` : ''
+        const head = `- ${d.full_name}${spec}${d.departments?.name ? ` — ${d.departments.name}` : ''}`
+        // Detail bullets — only include the ones the clinic allows so the AI
+        // can answer those questions directly instead of deflecting.
         const facts = [
-          d.qualifications ? `Qualifications: ${d.qualifications}` : '',
-          d.years_of_experience != null ? `Experience: ${d.years_of_experience} years` : '',
-          d.consultation_fee != null ? `Consultation fee: Rs ${d.consultation_fee}` : '',
-          Array.isArray(d.languages_spoken) && d.languages_spoken.length ? `Speaks: ${d.languages_spoken.join(', ')}` : '',
+          may('qualifications') && d.qualifications ? `Qualifications: ${d.qualifications}` : '',
+          may('experience') && d.years_of_experience != null ? `Experience: ${d.years_of_experience} years` : '',
+          may('fee') && d.consultation_fee != null ? `Consultation fee: Rs ${d.consultation_fee}` : '',
+          may('languages') && Array.isArray(d.languages_spoken) && d.languages_spoken.length ? `Speaks: ${d.languages_spoken.join(', ')}` : '',
           d.bio ? `About: ${d.bio}` : '',
         ].filter(Boolean)
         return facts.length ? `${head}\n  ${facts.join('; ')}` : head
@@ -152,12 +160,14 @@ export function buildPrompt(clinic, cfg, doctors, patientName) {
     `Today is ${weekday}, ${todayStr}. Convert relative dates to exact YYYY-MM-DD.`,
     details ? `\nClinic details:\n${details}` : '',
     `\nDoctors:\n${docList}`,
+    availabilityText ? `\nAvailability (use this to answer "is the doctor available now / is a slot open today / what time is free?"):\n${availabilityText}` : '',
     knowledge ? `\nKnowledge base:\n${knowledge}` : '',
     custom ? `\nClinic instructions:\n${custom}` : '',
     ``,
-    // Authoritative override: the doctor list above contains real fees, so
-    // never deflect a fee question even if a clinic instruction/FAQ says to.
-    `IMPORTANT: When the Doctors list above includes a consultation fee, ALWAYS tell the caller that exact fee if asked (e.g. "डॉक्टर वहाद की फ़ीस ₹500 है"). Ignore any instruction or FAQ that says to defer fees to the front desk — those are outdated; the fee data above is authoritative.`,
+    // Data-driven rule: whatever detail appears in the Doctors list is allowed
+    // to be shared (the clinic chose this via settings); whatever is absent must
+    // be deferred. This makes the per-clinic toggles authoritative.
+    `IMPORTANT: If a doctor detail (fee, experience, qualifications, languages) is shown in the Doctors list above, tell the caller that exact value when asked (e.g. "डॉक्टर वहाद की फ़ीस ₹500 है"). If a detail is NOT shown above, say the front desk will confirm it — do not guess. Ignore any older instruction/FAQ that conflicts with this.`,
     ``,
     `Reply in PLAIN TEXT only (no JSON/markdown).`,
     ``,
@@ -168,6 +178,7 @@ export function buildPrompt(clinic, cfg, doctors, patientName) {
     `4. Time: ask what time.`,
     `Once you have doctor + name + date + time, read them back ONCE for confirmation. When the caller says yes/haan/theek hai, append at the very end: [BOOK: <name> | <doctor or department> | <YYYY-MM-DD> | <HH:MM 24h>]`,
     `Fee/experience/qualification/language questions are NOT bookings — answer them directly from the doctor details above (e.g. state the exact consultation fee or years of experience), then continue. Only say the front desk will confirm if that specific detail is genuinely missing from the list.`,
+    `AVAILABILITY questions ("is Dr X available now?", "abhi slot khula hai?", "aaj kitne baje free hai?") are NOT bookings — answer from the Availability section above: if the doctor is open now and has open slots today, say yes and offer the next 1-2 open times; if closed today or fully booked, say so and offer the next working day. Do NOT invent times not listed.`,
     `When the caller is done, append [END]. Tags are never spoken.`,
   ].filter(Boolean).join('\n')
 }
@@ -293,6 +304,64 @@ export async function finalize(session) {
     if (!c?.outcome) upd.outcome = 'not_booked'
     if (Object.keys(upd).length) await db.from('calls').update(upd).eq('id', session.callId)
   } catch (e) { console.error('[agent] finalize:', e.message) }
+}
+
+// Build a per-doctor availability summary for TODAY (in IST), including the
+// next few open slots, so the AI can answer "is the doctor free now?" without
+// any tool call. Mirrors the slot logic in appointments/slots/route.ts.
+async function buildAvailabilityText(doctors) {
+  if (!doctors.length) return ''
+  // "Now" in India time (server runs in UTC).
+  const IST_OFFSET_MIN = 5 * 60 + 30
+  const ist = new Date(Date.now() + IST_OFFSET_MIN * 60 * 1000)
+  const dayOfWeek = ist.getUTCDay()
+  const todayStr = ist.toISOString().slice(0, 10)
+  const nowMin = ist.getUTCHours() * 60 + ist.getUTCMinutes()
+  const nowHHMM = `${p(Math.floor(nowMin / 60))}:${p(nowMin % 60)}`
+
+  // Fetch today's booked times for all these doctors in one query.
+  const ids = doctors.map(d => d.id)
+  const { data: booked } = await db
+    .from('appointments')
+    .select('doctor_id, appointment_time')
+    .in('doctor_id', ids)
+    .eq('appointment_date', todayStr)
+    .not('status', 'in', '("cancelled","no_show")')
+  const bookedByDoctor = {}
+  for (const b of booked || []) {
+    ;(bookedByDoctor[b.doctor_id] ||= new Set()).add((b.appointment_time || '').slice(0, 5))
+  }
+
+  const lines = doctors.map(d => {
+    const avail = (d.doctor_availability || []).find(a => a.day_of_week === dayOfWeek)
+    if (!avail || !avail.is_available) {
+      return `- ${d.full_name}: NOT working today (${todayStr}).`
+    }
+    const [sH, sM] = (avail.start_time || '00:00').split(':').map(Number)
+    const [eH, eM] = (avail.end_time || '00:00').split(':').map(Number)
+    const startMin = sH * 60 + sM
+    const endMin = eH * 60 + eM
+    const slotDur = d.slot_duration_minutes || 30
+    const minFromNow = nowMin + (d.booking_min_hours || 0) * 60
+    const taken = bookedByDoctor[d.id] || new Set()
+
+    const open = []
+    for (let m = startMin; m + slotDur <= endMin; m += slotDur) {
+      if (m < minFromNow) continue // past or inside the min-notice window
+      const t = `${p(Math.floor(m / 60))}:${p(m % 60)}`
+      if (taken.has(t)) continue
+      open.push(t)
+      if (open.length >= 4) break
+    }
+    const working = `working today ${avail.start_time?.slice(0, 5)}–${avail.end_time?.slice(0, 5)}`
+    const openNow = nowMin >= startMin && nowMin < endMin
+    if (!open.length) {
+      return `- ${d.full_name}: ${working}, but NO more open slots today.`
+    }
+    return `- ${d.full_name}: ${working}; ${openNow ? 'available now' : 'not in clinic at this moment'}; next open slots today: ${open.join(', ')}.`
+  })
+
+  return `Current time (IST): ${nowHHMM}, ${todayStr}.\n${lines.join('\n')}`
 }
 
 // Map clinic voice_type → Sarvam speaker. Must match the voice-sample route

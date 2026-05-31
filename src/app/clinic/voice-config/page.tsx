@@ -117,6 +117,14 @@ export default function VoiceConfigPage() {
       doctor_selection: 'auto_department',
       tone: 'warm and professional',
       custom_instructions: '',
+      // Which doctor details the AI is allowed to tell patients on a call.
+      share_doctor_info: {
+        specialization: true,
+        experience: true,
+        qualifications: true,
+        fee: true,
+        languages: true,
+      },
     },
     ai_knowledge: {
       clinic_name: '',
@@ -396,6 +404,42 @@ export default function VoiceConfigPage() {
                       placeholder="Always greet by clinic name. If asked about fees, say the front desk will confirm. Encourage morning slots."
                     />
                   </FormField>
+                </div>
+              </PageCard>
+
+              {/* Doctor Info AI Can Share */}
+              <PageCard title="Doctor Info AI Can Share" subtitle="Choose which doctor details the AI tells patients on calls">
+                <div className="space-y-3">
+                  {[
+                    { key: 'specialization', label: 'Specialization', sub: 'e.g. Cardiologist' },
+                    { key: 'experience', label: 'Years of Experience', sub: 'e.g. 10 years' },
+                    { key: 'qualifications', label: 'Qualifications', sub: 'e.g. MBBS, MD' },
+                    { key: 'fee', label: 'Consultation Fee', sub: 'e.g. Rs 500 — turn off to keep fees private' },
+                    { key: 'languages', label: 'Languages Spoken', sub: 'e.g. Hindi, Urdu, English' },
+                  ].map(item => {
+                    const sdi = config.booking_rules.share_doctor_info as Record<string, boolean>
+                    return (
+                      <div key={item.key} className="flex items-center justify-between py-2" style={{ borderBottom: '1px solid var(--b1)' }}>
+                        <div>
+                          <div className="text-sm" style={{ color: 'var(--txt)' }}>{item.label}</div>
+                          <div className="text-xs" style={{ color: 'var(--txt3)' }}>{item.sub}</div>
+                        </div>
+                        <Toggle
+                          checked={sdi?.[item.key] ?? true}
+                          onChange={v => setConfig(c => ({
+                            ...c,
+                            booking_rules: {
+                              ...c.booking_rules,
+                              share_doctor_info: { ...c.booking_rules.share_doctor_info, [item.key]: v },
+                            },
+                          }))}
+                        />
+                      </div>
+                    )
+                  })}
+                </div>
+                <div className="mt-3">
+                  <AppBtn size="sm" onClick={handleSave} disabled={saving}>{saving ? 'Saving...' : '💾 Save'}</AppBtn>
                 </div>
               </PageCard>
             </div>

@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     db.from('voice_agent_config').select('*').eq('clinic_id', clinicId).single(),
     db
       .from('doctors')
-      .select('full_name, specialization, departments(name)')
+      .select('full_name, specialization, years_of_experience, qualifications, consultation_fee, languages_spoken, bio, departments(name), doctor_availability(day_of_week, start_time, end_time, is_available)')
       .eq('clinic_id', clinicId)
       .eq('is_active', true),
   ])
@@ -65,6 +65,18 @@ export async function POST(req: NextRequest) {
   }
 }
 
+// Render a doctor's weekly schedule as a compact line, e.g.
+// "Available: Mon–Sat 09:00–17:00" style (one entry per working day).
+function weeklySchedule(avail: any[]): string {
+  if (!Array.isArray(avail) || !avail.length) return ''
+  const DAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+  const days = avail
+    .filter(a => a.is_available)
+    .sort((a, b) => a.day_of_week - b.day_of_week)
+    .map(a => `${DAY[a.day_of_week]} ${(a.start_time || '').slice(0, 5)}–${(a.end_time || '').slice(0, 5)}`)
+  return days.length ? `Available: ${days.join(', ')}` : 'Available: (no working days set)'
+}
+
 function buildPreviewPrompt(clinic: any, cfg: any, doctors: any[]): string {
   const clinicName = clinic?.name || 'the clinic'
   const today = new Date()
@@ -83,14 +95,25 @@ function buildPreviewPrompt(clinic: any, cfg: any, doctors: any[]): string {
         .join('\n')
     : ''
 
+  // Same per-clinic detail toggles the live voice agent uses, so the test
+  // chat behaves identically to a real call.
+  const share = cfg?.booking_rules?.share_doctor_info || {}
+  const may = (key: string) => share[key] !== false
   const doctorList = doctors.length
     ? doctors
-        .map(
-          (d: any) =>
-            `- ${d.full_name}${d.specialization ? ` (${d.specialization})` : ''}${
-              d.departments?.name ? ` — ${d.departments.name}` : ''
-            }`,
-        )
+        .map((d: any) => {
+          const spec = may('specialization') && d.specialization ? ` (${d.specialization})` : ''
+          const head = `- ${d.full_name}${spec}${d.departments?.name ? ` — ${d.departments.name}` : ''}`
+          const facts = [
+            may('qualifications') && d.qualifications ? `Qualifications: ${d.qualifications}` : '',
+            may('experience') && d.years_of_experience != null ? `Experience: ${d.years_of_experience} years` : '',
+            may('fee') && d.consultation_fee != null ? `Consultation fee: Rs ${d.consultation_fee}` : '',
+            may('languages') && Array.isArray(d.languages_spoken) && d.languages_spoken.length ? `Speaks: ${d.languages_spoken.join(', ')}` : '',
+            weeklySchedule(d.doctor_availability),
+            d.bio ? `About: ${d.bio}` : '',
+          ].filter(Boolean)
+          return facts.length ? `${head}\n  ${facts.join('; ')}` : head
+        })
         .join('\n')
     : '(No doctors configured yet.)'
 
@@ -120,6 +143,8 @@ function buildPreviewPrompt(clinic: any, cfg: any, doctors: any[]): string {
     custom ? `\nClinic instructions:\n${custom}` : '',
     ``,
     `Help with appointments, timings, doctors, and FAQs. Never invent doctors/prices not listed.`,
+    `If a doctor detail (fee, experience, qualifications, languages) is shown above, share that exact value when asked. If it is NOT shown, say the front desk will confirm it.`,
+    `For "is the doctor available / what days/times" questions, use each doctor's "Available:" weekly schedule above. If asked about a day the doctor does not work, say so and suggest a working day.`,
     `Reply with ONLY a JSON object: {"reply": "<what you say>"}`,
   ]
     .filter(Boolean)
