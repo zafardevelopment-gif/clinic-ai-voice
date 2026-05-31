@@ -107,7 +107,7 @@ export async function runTurn(session, transcript) {
     raw = 'Maaf kijiye, thodi dikkat ho rahi hai. Aap dobara bata sakte hain?'
   }
 
-  const { reply: cleaned, booking, end: endTag } = parseTags(raw)
+  const { reply: cleaned, booking, reschedule, cancel, end: endTag } = parseTags(raw)
   let reply = cleaned
   let end = endTag
 
@@ -115,6 +115,14 @@ export async function runTurn(session, transcript) {
     const r = await tryBook(session, booking)
     reply = r.message
     if (r.booked) end = true
+  } else if (reschedule) {
+    const r = await tryReschedule(session, reschedule)
+    reply = r.message
+    if (r.done) end = true
+  } else if (cancel) {
+    const r = await tryCancel(session)
+    reply = r.message
+    if (r.done) end = true
   }
 
   session.messages.push({ role: 'assistant', content: reply })
@@ -145,6 +153,10 @@ export function buildPrompt(clinic, cfg, doctors, patientName, availabilityText)
   // sharing everything when not configured.
   const share = cfg?.booking_rules?.share_doctor_info || {}
   const may = (key) => share[key] !== false
+  // Reschedule/cancel are opt-in per clinic (default: reschedule on, cancel off
+  // — matches the AI Setup defaults).
+  const allowReschedule = cfg?.booking_rules?.allow_reschedule !== false
+  const allowCancel = cfg?.booking_rules?.allow_cancel === true
   const docList = doctors.length
     ? doctors.map(d => {
         // Header line: name (specialization, if allowed) — department
@@ -198,6 +210,12 @@ export function buildPrompt(clinic, cfg, doctors, patientName, availabilityText)
     `3. Date: ask which day.`,
     `4. Time: ask what time.`,
     `Once you have doctor + name + date + time, read them back ONCE for confirmation. When the caller says yes/haan/theek hai, append at the very end: [BOOK: <name> | <doctor or department> | <YYYY-MM-DD> | <HH:MM 24h>]`,
+    allowReschedule
+      ? `RESCHEDULE / CHANGE: if the caller wants to change or move an existing appointment, ask only for the NEW date and/or new time (do not re-ask their name — we look up their existing booking by phone). Once you have the new date and time and they confirm, append at the very end: [RESCHEDULE: <YYYY-MM-DD> | <HH:MM 24h>]`
+      : `If a caller asks to change/reschedule an appointment, tell them the front desk will handle that and offer to take a message.`,
+    allowCancel
+      ? `CANCEL: if the caller wants to cancel their appointment, confirm once, then append at the very end: [CANCEL]`
+      : `If a caller asks to cancel, tell them the front desk will handle cancellations.`,
     `Fee/experience/qualification/language questions are NOT bookings — answer them directly from the doctor details above (e.g. state the exact consultation fee or years of experience), then continue. Only say the front desk will confirm if that specific detail is genuinely missing from the list.`,
     `AVAILABILITY questions ("is Dr X available now?", "abhi slot khula hai?", "aaj kitne baje free hai?") are NOT bookings — answer from the Availability section above: if the doctor is open now and has open slots today, say yes and offer the next 1-2 open times; if closed today or fully booked, say so and offer the next working day. Do NOT invent times not listed.`,
     `When the caller is done, append [END]. Tags are never spoken.`,
@@ -208,6 +226,10 @@ function parseTags(raw) {
   let text = (raw || '').replace(/```[a-z]*\n?/gi, '').trim()
   const end = /\[END\]/i.test(text)
   text = text.replace(/\[END\]/gi, '').trim()
+
+  const cancel = /\[CANCEL\]/i.test(text)
+  text = text.replace(/\[CANCEL\]/gi, '').trim()
+
   let booking = null
   const m = text.match(/\[BOOK:\s*([^\]]*)\]?/i)
   if (m) {
@@ -215,11 +237,20 @@ function parseTags(raw) {
     if (name) booking = { patient_name: name, doctor, date, time }
     text = text.replace(/\[BOOK:[^\]]*\]?/i, '').trim()
   }
+
+  let reschedule = null
+  const rm = text.match(/\[RESCHEDULE:\s*([^\]]*)\]?/i)
+  if (rm) {
+    const [date, time] = rm[1].split('|').map(s => s.trim())
+    if (date || time) reschedule = { date, time }
+    text = text.replace(/\[RESCHEDULE:[^\]]*\]?/i, '').trim()
+  }
+
   if (text.startsWith('{')) {
     const r = text.match(/"reply"\s*:\s*"([^"]+)"/)
     if (r) text = r[1]
   }
-  return { reply: text || 'Maaf kijiye, dobara boliye?', booking, end }
+  return { reply: text || 'Maaf kijiye, dobara boliye?', booking, reschedule, cancel, end }
 }
 
 export async function tryBook(session, booking) {
@@ -252,28 +283,120 @@ export async function tryBook(session, booking) {
       }
     }
 
+    // Resolve patient. For a new caller this is at most 2 queries; for a known
+    // caller (session.patientId set) it's zero.
     let patientId = session.patientId
+    let isNewPatient = false
     if (!patientId) {
       const { data: existing } = await db.from('patients').select('id').eq('clinic_id', session.clinicId).eq('phone', session.callerPhone).maybeSingle()
       if (existing) {
         patientId = existing.id
-        await db.from('patients').update({ full_name: name }).eq('id', patientId)
+        // Name update is non-critical — don't block the caller on it.
+        db.from('patients').update({ full_name: name }).eq('id', patientId).then(undefined, () => {})
       } else {
         const { data: created } = await db.from('patients').insert({ clinic_id: session.clinicId, full_name: name, phone: session.callerPhone }).select('id').single()
         patientId = created.id
+        isNewPatient = true
       }
       session.patientId = patientId
-      await db.from('calls').update({ patient_id: patientId }).eq('id', session.callId)
     }
-    await db.from('appointments').insert({
+
+    // The appointment insert is the ONLY write the caller must wait on — we
+    // can't say "booked" until it succeeds.
+    const { error: apptErr } = await db.from('appointments').insert({
       clinic_id: session.clinicId, patient_id: patientId, doctor_id: doctor.id,
       appointment_date: date, appointment_time: time, status: 'scheduled', booked_via: 'ai_voice',
     })
-    await db.from('calls').update({ outcome: 'booked', call_type: 'booking', intent: 'book_appointment' }).eq('id', session.callId)
+    if (apptErr) throw apptErr
+
+    // Merge what used to be two separate `calls` updates into one. Awaited so
+    // finalize() (runs right after on [END]) can't race and overwrite the
+    // 'booked' outcome with 'not_booked'. Still saves a round-trip vs before.
+    const callUpdate = { outcome: 'booked', call_type: 'booking', intent: 'book_appointment' }
+    if (isNewPatient) callUpdate.patient_id = patientId
+    await db.from('calls').update(callUpdate).eq('id', session.callId)
+
     return { booked: true, message: `हो गया! आपका अपॉइंटमेंट ${doctor.full_name} के साथ ${date} को ${time.slice(0, 5)} बजे बुक हो गया। कन्फर्मेशन मैसेज आ जाएगा। शुक्रिया!` }
   } catch (err) {
     console.error('[agent] booking failed:', err.message)
     return { booked: false, message: 'अभी सेव करने में दिक्कत हुई। फ्रंट डेस्क आपको कॉल करके कन्फर्म करेगा। और कुछ?' }
+  }
+}
+
+// Find the caller's most recent upcoming (scheduled/confirmed) appointment so
+// we can reschedule or cancel it. Returns the appointment row (with doctor) or
+// null. Resolves the patient by session.patientId, else by caller phone.
+async function findUpcomingAppointment(session) {
+  let patientId = session.patientId
+  if (!patientId) {
+    const { data: p } = await db.from('patients').select('id').eq('clinic_id', session.clinicId).eq('phone', session.callerPhone).maybeSingle()
+    patientId = p?.id || null
+    if (patientId) session.patientId = patientId
+  }
+  if (!patientId) return null
+  const today = new Date(Date.now() + (5 * 60 + 30) * 60 * 1000).toISOString().slice(0, 10)
+  const { data } = await db
+    .from('appointments')
+    .select('id, doctor_id, appointment_date, appointment_time, doctors(full_name)')
+    .eq('patient_id', patientId)
+    .in('status', ['scheduled', 'confirmed'])
+    .gte('appointment_date', today)
+    .order('appointment_date', { ascending: true })
+    .order('appointment_time', { ascending: true })
+    .limit(1)
+  return (data && data[0]) || null
+}
+
+export async function tryReschedule(session, change) {
+  const appt = await findUpcomingAppointment(session)
+  if (!appt) {
+    return { done: false, message: 'मुझे आपके नाम पर कोई आने वाला अपॉइंटमेंट नहीं मिला। क्या आप नया अपॉइंटमेंट बुक करना चाहेंगे?' }
+  }
+  const newDate = (change.date || '').trim() || appt.appointment_date
+  const newTime = normalizeTime(change.time || '') || appt.appointment_time
+  if (!newDate || !newTime) {
+    return { done: false, message: 'नई तारीख़ और समय बता दीजिए, मैं अपॉइंटमेंट बदल दूँगा।' }
+  }
+  try {
+    // Conflict-check the new slot for the same doctor (ignore this appt itself).
+    const { data: clashes } = await db
+      .from('appointments')
+      .select('id, appointment_time')
+      .eq('doctor_id', appt.doctor_id)
+      .eq('appointment_date', newDate)
+      .in('status', ['scheduled', 'confirmed'])
+    const hhmm = newTime.slice(0, 5)
+    const clash = (clashes || []).some(a => a.id !== appt.id && (a.appointment_time || '').slice(0, 5) === hhmm)
+    if (clash) {
+      const docName = appt.doctors?.full_name || 'डॉक्टर'
+      return { done: false, message: `माफ़ कीजिए, ${docName} के साथ उस समय पहले से अपॉइंटमेंट है। कोई और समय बता दीजिए?` }
+    }
+    const { error } = await db.from('appointments').update({ appointment_date: newDate, appointment_time: newTime }).eq('id', appt.id)
+    if (error) throw error
+    // Awaited (not backgrounded) so finalize() doesn't race and overwrite this.
+    await db.from('calls').update({ outcome: 'rescheduled', call_type: 'booking', intent: 'reschedule' }).eq('id', session.callId)
+    const docName = appt.doctors?.full_name || 'डॉक्टर'
+    return { done: true, message: `हो गया! आपका अपॉइंटमेंट ${docName} के साथ अब ${newDate} को ${hhmm} बजे है। कन्फर्मेशन मैसेज आ जाएगा। शुक्रिया!` }
+  } catch (err) {
+    console.error('[agent] reschedule failed:', err.message)
+    return { done: false, message: 'अभी बदलने में दिक्कत हुई। फ्रंट डेस्क आपको कॉल करके कन्फर्म करेगा। और कुछ?' }
+  }
+}
+
+export async function tryCancel(session) {
+  const appt = await findUpcomingAppointment(session)
+  if (!appt) {
+    return { done: false, message: 'मुझे आपके नाम पर कोई आने वाला अपॉइंटमेंट नहीं मिला। और कुछ मदद चाहिए?' }
+  }
+  try {
+    const { error } = await db.from('appointments').update({ status: 'cancelled' }).eq('id', appt.id)
+    if (error) throw error
+    await db.from('calls').update({ outcome: 'cancelled', call_type: 'booking', intent: 'cancel' }).eq('id', session.callId)
+    const docName = appt.doctors?.full_name || 'डॉक्टर'
+    return { done: true, message: `आपका ${docName} के साथ ${appt.appointment_date} का अपॉइंटमेंट कैंसिल कर दिया गया है। शुक्रिया!` }
+  } catch (err) {
+    console.error('[agent] cancel failed:', err.message)
+    return { done: false, message: 'अभी कैंसिल करने में दिक्कत हुई। फ्रंट डेस्क आपको कॉल करके कन्फर्म करेगा। और कुछ?' }
   }
 }
 
