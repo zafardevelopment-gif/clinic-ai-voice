@@ -57,6 +57,7 @@ export async function createSession(callId) {
     clinicId: call.clinic_id,
     callerPhone: call.phone_number,
     patientId: call.patient_id,
+    callerName: patientName, // the registered name for this phone, if known
     startedAt: call.created_at,
     doctors: doctors || [],
     language: cfg?.language || 'hi-IN',
@@ -70,15 +71,19 @@ export async function createSession(callId) {
       `\n\nTo book an appointment, gather the caller's name, a doctor/department from the list, a date, and a time, confirm them, then call the book_appointment function. Speak naturally in the caller's language. Keep replies short and conversational.`,
   }
 
-  // Compute availability in the background and splice it into the system
-  // prompt. Don't block session creation / the greeting on it.
-  buildAvailabilityText(doctors || [])
-    .then(text => {
-      if (text) {
-        session.messages[0].content = buildPrompt(clinic, cfg, doctors || [], patientName, text)
+  // Compute availability AND the caller's existing-booking context in the
+  // background, then splice both into the system prompt in ONE update (so the
+  // greeting isn't delayed and the two patches don't overwrite each other).
+  Promise.all([
+    buildAvailabilityText(doctors || []),
+    buildCallerContext(session, patientName),
+  ])
+    .then(([availText, callerInfo]) => {
+      if (availText || callerInfo) {
+        session.messages[0].content = buildPrompt(clinic, cfg, doctors || [], patientName, availText, callerInfo)
       }
     })
-    .catch(err => console.error('[agent] availability compute failed:', err.message))
+    .catch(err => console.error('[agent] context compute failed:', err.message))
 
   return session
 }
@@ -120,7 +125,7 @@ export async function runTurn(session, transcript) {
     reply = r.message
     if (r.done) end = true
   } else if (cancel) {
-    const r = await tryCancel(session)
+    const r = await tryCancel(session, { patient: cancel.patient })
     reply = r.message
     if (r.done) end = true
   }
@@ -134,7 +139,7 @@ export async function runTurn(session, transcript) {
 
 // ─── prompt + parsing (ported from turn/route.ts) ─────────────────────────────
 
-export function buildPrompt(clinic, cfg, doctors, patientName, availabilityText) {
+export function buildPrompt(clinic, cfg, doctors, patientName, availabilityText, callerInfo) {
   const today = new Date()
   const todayStr = today.toISOString().slice(0, 10)
   const weekday = today.toLocaleDateString('en-US', { weekday: 'long' })
@@ -189,7 +194,8 @@ export function buildPrompt(clinic, cfg, doctors, patientName, availabilityText)
     tone ? `Tone: ${tone}.` : '',
     `Reply in the SAME language the caller uses. IMPORTANT: write your reply in that language's NATIVE SCRIPT, not Roman letters — Hindi/Maithili/Bhojpuri in Devanagari (e.g. "आपका नाम क्या है?" NOT "Aapka naam kya hai?"), Bengali in Bengali script, Tamil in Tamil script, etc. Only use Roman letters if the caller is clearly speaking English. Writing Hindi in Roman letters makes the text-to-speech voice sound wrong. Never say you cannot speak a language.`,
     hours,
-    patientName ? `The caller is ${patientName}.` : '',
+    patientName ? `The caller is a known patient: ${patientName} (identified by their phone number).` : `The caller's number is not linked to any patient record yet.`,
+    callerInfo ? callerInfo : '',
     `Today is ${weekday}, ${todayStr}. Convert relative dates to exact YYYY-MM-DD.`,
     details ? `\nClinic details:\n${details}` : '',
     `\nDoctors:\n${docList}`,
@@ -205,19 +211,32 @@ export function buildPrompt(clinic, cfg, doctors, patientName, availabilityText)
     `Reply in PLAIN TEXT only (no JSON/markdown).`,
     ``,
     `BOOKING — follow these steps IN ORDER, never repeat a step you already have an answer for, never ask two things at once:`,
-    `1. Doctor/department: if the caller names or accepts a doctor from the list (e.g. "Dr. Wahaj"), treat it as CHOSEN and move on — do NOT ask about the doctor again.`,
-    `2. Patient name: ask "Aapka naam kya hai?" (skip if already known).`,
-    `3. Date: ask which day.`,
-    `4. Time: ask what time.`,
-    `Once you have doctor + name + date + time, read them back ONCE for confirmation. When the caller says yes/haan/theek hai, append at the very end: [BOOK: <name> | <doctor or department> | <YYYY-MM-DD> | <HH:MM 24h>]`,
+    `1. Doctor/department: if the caller names or accepts a doctor from the list (e.g. "Dr. Wahaj"), treat it as CHOSEN and move on — do NOT ask about the doctor again. If they describe a symptom instead, use the Symptom→Department guide to suggest the right doctor.`,
+    `2. WHO the appointment is for:`,
+    patientName
+      ? `   - The caller is already known as ${patientName}. Ask once: "क्या यह अपॉइंटमेंट आपके लिए है या किसी और के लिए?" If for themselves, use "${patientName}" as the patient name — do NOT ask their name again. If for someone else, ask that person's name and use it.`
+      : `   - Ask the patient's name once: "अपॉइंटमेंट किसके नाम पर बुक करूँ?" — this may be the caller or someone else. Use whatever name they give.`,
+    `3. Date: ask which day (if not already given).`,
+    `4. Time: ask what time (if not already given).`,
+    `Once you have doctor + patient name + date + time, read them back ONCE for confirmation. When the caller says yes/haan/theek hai, append at the very end: [BOOK: <patient name> | <doctor or department> | <YYYY-MM-DD> | <HH:MM 24h>]`,
     allowReschedule
-      ? `RESCHEDULE / CHANGE: if the caller wants to change or move an existing appointment, ask only for the NEW date and/or new time (do not re-ask their name — we look up their existing booking by phone). Once you have the new date and time and they confirm, append at the very end: [RESCHEDULE: <YYYY-MM-DD> | <HH:MM 24h>]`
+      ? `RESCHEDULE / CHANGE: if the caller wants to move an existing appointment, ask for the NEW date and/or time. If their number has more than one upcoming appointment (see Caller's existing appointments above), also confirm WHICH patient. Once confirmed, append at the very end: [RESCHEDULE: <patient name or blank> | <YYYY-MM-DD> | <HH:MM 24h>]`
       : `If a caller asks to change/reschedule an appointment, tell them the front desk will handle that and offer to take a message.`,
     allowCancel
-      ? `CANCEL: if the caller wants to cancel their appointment, confirm once, then append at the very end: [CANCEL]`
+      ? `CANCEL: if the caller wants to cancel, confirm once (and WHICH patient, if multiple), then append at the very end: [CANCEL: <patient name or blank>]`
       : `If a caller asks to cancel, tell them the front desk will handle cancellations.`,
     `Fee/experience/qualification/language questions are NOT bookings — answer them directly from the doctor details above (e.g. state the exact consultation fee or years of experience), then continue. Only say the front desk will confirm if that specific detail is genuinely missing from the list.`,
     `AVAILABILITY questions ("is Dr X available now?", "abhi slot khula hai?", "aaj kitne baje free hai?") are NOT bookings — answer from the Availability section above: if the doctor is open now and has open slots today, say yes and offer the next 1-2 open times; if closed today or fully booked, say so and offer the next working day. Do NOT invent times not listed.`,
+    ``,
+    `HANDLE THESE BOOKING SCENARIOS:`,
+    `- Slot already taken: if booking fails for a clash, you'll be told — offer the next available time.`,
+    `- Doctor not working that day / outside hours: suggest the nearest day the doctor is available (see Availability/open days).`,
+    `- Caller unsure which doctor: ask the reason/symptom and suggest a department/doctor from the list.`,
+    `- Multiple people on one phone: the same caller may book for several family members; always confirm the patient's name for THIS booking. When rescheduling/cancelling and more than one appointment exists, ask which patient.`,
+    `- Returning caller with an existing appointment: acknowledge it (from Caller's existing appointments) before booking another.`,
+    `- Vague date/time ("subah", "shaam", "jaldi"): ask for a specific day and clock time before booking.`,
+    `- Caller gives only partial info: ask ONLY for the missing piece, never re-ask what you already have.`,
+    `- Emergency / urgent medical wording: tell them to contact emergency services or come immediately; do not just book a future slot.`,
     `When the caller is done, append [END]. Tags are never spoken.`,
   ].filter(Boolean).join('\n')
 }
@@ -227,8 +246,12 @@ function parseTags(raw) {
   const end = /\[END\]/i.test(text)
   text = text.replace(/\[END\]/gi, '').trim()
 
-  const cancel = /\[CANCEL\]/i.test(text)
-  text = text.replace(/\[CANCEL\]/gi, '').trim()
+  let cancel = null
+  const cm = text.match(/\[CANCEL:?\s*([^\]]*)\]?/i)
+  if (cm) {
+    cancel = { patient: (cm[1] || '').trim() }
+    text = text.replace(/\[CANCEL:?[^\]]*\]?/i, '').trim()
+  }
 
   let booking = null
   const m = text.match(/\[BOOK:\s*([^\]]*)\]?/i)
@@ -241,8 +264,12 @@ function parseTags(raw) {
   let reschedule = null
   const rm = text.match(/\[RESCHEDULE:\s*([^\]]*)\]?/i)
   if (rm) {
-    const [date, time] = rm[1].split('|').map(s => s.trim())
-    if (date || time) reschedule = { date, time }
+    const parts = rm[1].split('|').map(s => s.trim())
+    // New 3-part form: <patient> | <date> | <time>. Tolerate old 2-part form.
+    let patient = '', date = '', time = ''
+    if (parts.length >= 3) [patient, date, time] = parts
+    else [date, time] = parts
+    if (date || time) reschedule = { patient, date, time }
     text = text.replace(/\[RESCHEDULE:[^\]]*\]?/i, '').trim()
   }
 
@@ -283,22 +310,41 @@ export async function tryBook(session, booking) {
       }
     }
 
-    // Resolve patient. For a new caller this is at most 2 queries; for a known
-    // caller (session.patientId set) it's zero.
-    let patientId = session.patientId
+    // Resolve the patient this appointment is FOR. It may be the caller, or
+    // someone else they're booking for. We decide by comparing the booked name
+    // with the caller's known name.
+    const sameName = (a, b) => (a || '').trim().toLowerCase() === (b || '').trim().toLowerCase()
+    const bookingForCaller = !session.callerName || sameName(name, session.callerName)
+
+    let patientId
     let isNewPatient = false
-    if (!patientId) {
-      const { data: existing } = await db.from('patients').select('id').eq('clinic_id', session.clinicId).eq('phone', session.callerPhone).maybeSingle()
+    if (bookingForCaller && session.patientId) {
+      // Known caller booking for themselves — reuse their record, no queries.
+      patientId = session.patientId
+    } else {
+      // Either an unknown caller, or booking for someone else. Find an existing
+      // patient with this phone + name; otherwise create one. Keying on name
+      // too means a family member booked from the same phone gets their own
+      // record instead of overwriting the caller's.
+      const { data: existing } = await db
+        .from('patients')
+        .select('id')
+        .eq('clinic_id', session.clinicId)
+        .eq('phone', session.callerPhone)
+        .ilike('full_name', name)
+        .maybeSingle()
       if (existing) {
         patientId = existing.id
-        // Name update is non-critical — don't block the caller on it.
-        db.from('patients').update({ full_name: name }).eq('id', patientId).then(undefined, () => {})
       } else {
         const { data: created } = await db.from('patients').insert({ clinic_id: session.clinicId, full_name: name, phone: session.callerPhone }).select('id').single()
         patientId = created.id
         isNewPatient = true
       }
-      session.patientId = patientId
+      // Only adopt this as the caller's own record if it's actually the caller.
+      if (bookingForCaller) {
+        session.patientId = patientId
+        session.callerName = name
+      }
     }
 
     // The appointment insert is the ONLY write the caller must wait on — we
@@ -323,35 +369,85 @@ export async function tryBook(session, booking) {
   }
 }
 
-// Find the caller's most recent upcoming (scheduled/confirmed) appointment so
-// we can reschedule or cancel it. Returns the appointment row (with doctor) or
-// null. Resolves the patient by session.patientId, else by caller phone.
-async function findUpcomingAppointment(session) {
-  let patientId = session.patientId
-  if (!patientId) {
-    const { data: p } = await db.from('patients').select('id').eq('clinic_id', session.clinicId).eq('phone', session.callerPhone).maybeSingle()
-    patientId = p?.id || null
-    if (patientId) session.patientId = patientId
-  }
-  if (!patientId) return null
+// Summarize the caller's existing UPCOMING appointments (there can be several —
+// the same phone may book for multiple family members). Lets the AI proactively
+// say "you already have an appointment with Dr X on..." and disambiguate when
+// rescheduling/cancelling. Returns a prompt line, or '' if none.
+async function buildCallerContext(session, patientName) {
+  // Resolve patient id(s) on this phone. A phone can map to several patients
+  // (family booking from one number), so fetch ALL of them.
+  const { data: patients } = await db
+    .from('patients')
+    .select('id, full_name')
+    .eq('clinic_id', session.clinicId)
+    .eq('phone', session.callerPhone)
+  if (!patients || !patients.length) return ''
+
+  const byId = {}
+  for (const p of patients) byId[p.id] = p.full_name
   const today = new Date(Date.now() + (5 * 60 + 30) * 60 * 1000).toISOString().slice(0, 10)
-  const { data } = await db
+  const { data: appts } = await db
     .from('appointments')
-    .select('id, doctor_id, appointment_date, appointment_time, doctors(full_name)')
-    .eq('patient_id', patientId)
+    .select('patient_id, appointment_date, appointment_time, doctors(full_name)')
+    .in('patient_id', patients.map(p => p.id))
     .in('status', ['scheduled', 'confirmed'])
     .gte('appointment_date', today)
     .order('appointment_date', { ascending: true })
     .order('appointment_time', { ascending: true })
-    .limit(1)
-  return (data && data[0]) || null
+
+  if (!appts || !appts.length) {
+    return `\nCaller history: this number is registered to ${patients.map(p => p.full_name).join(', ')} but has no upcoming appointments. You may proactively offer to book one.`
+  }
+  const lines = appts.map(a =>
+    `- ${byId[a.patient_id] || 'patient'}: ${a.doctors?.full_name || 'doctor'} on ${a.appointment_date} at ${(a.appointment_time || '').slice(0, 5)}`)
+  return `\nCaller's existing upcoming appointments (this phone may cover multiple people):\n${lines.join('\n')}\nUse this to greet returning patients ("aapka ${appts[0].doctors?.full_name || 'doctor'} ke saath appointment ${appts[0].appointment_date} ko hai") and, when they want to reschedule/cancel and have more than one, ask WHICH patient/appointment they mean.`
+}
+
+// Find the caller's upcoming appointments so we can reschedule/cancel. A single
+// phone may have MULTIPLE patients (family) and multiple appointments, so this
+// returns { appts, patientsByName }. `nameHint` (optional) narrows to a
+// specific person. Each appt row includes the patient name for disambiguation.
+async function findUpcomingAppointments(session, nameHint) {
+  // All patients registered to this phone.
+  const { data: patients } = await db
+    .from('patients')
+    .select('id, full_name')
+    .eq('clinic_id', session.clinicId)
+    .eq('phone', session.callerPhone)
+  if (!patients || !patients.length) return { appts: [] }
+
+  const nameById = {}
+  for (const p of patients) nameById[p.id] = p.full_name
+  const today = new Date(Date.now() + (5 * 60 + 30) * 60 * 1000).toISOString().slice(0, 10)
+  const { data } = await db
+    .from('appointments')
+    .select('id, patient_id, doctor_id, appointment_date, appointment_time, doctors(full_name)')
+    .in('patient_id', patients.map(p => p.id))
+    .in('status', ['scheduled', 'confirmed'])
+    .gte('appointment_date', today)
+    .order('appointment_date', { ascending: true })
+    .order('appointment_time', { ascending: true })
+
+  let appts = (data || []).map(a => ({ ...a, patient_name: nameById[a.patient_id] || null }))
+  const hint = (nameHint || '').trim().toLowerCase()
+  if (hint) {
+    const matched = appts.filter(a => (a.patient_name || '').toLowerCase().includes(hint) || hint.includes((a.patient_name || '').toLowerCase()))
+    if (matched.length) appts = matched
+  }
+  return { appts }
 }
 
 export async function tryReschedule(session, change) {
-  const appt = await findUpcomingAppointment(session)
-  if (!appt) {
+  const { appts } = await findUpcomingAppointments(session, change.patient)
+  if (!appts.length) {
     return { done: false, message: 'मुझे आपके नाम पर कोई आने वाला अपॉइंटमेंट नहीं मिला। क्या आप नया अपॉइंटमेंट बुक करना चाहेंगे?' }
   }
+  if (appts.length > 1) {
+    // Multiple upcoming (e.g. several family members) — ask which one.
+    const opts = appts.map(a => `${a.patient_name || 'patient'} (${a.doctors?.full_name || 'doctor'}, ${a.appointment_date})`).join('; ')
+    return { done: false, message: `आपके नंबर पर कई अपॉइंटमेंट हैं: ${opts}। किसका बदलना है — मरीज़ का नाम बता दीजिए?` }
+  }
+  const appt = appts[0]
   const newDate = (change.date || '').trim() || appt.appointment_date
   const newTime = normalizeTime(change.time || '') || appt.appointment_time
   if (!newDate || !newTime) {
@@ -383,11 +479,16 @@ export async function tryReschedule(session, change) {
   }
 }
 
-export async function tryCancel(session) {
-  const appt = await findUpcomingAppointment(session)
-  if (!appt) {
+export async function tryCancel(session, opts = {}) {
+  const { appts } = await findUpcomingAppointments(session, opts.patient)
+  if (!appts.length) {
     return { done: false, message: 'मुझे आपके नाम पर कोई आने वाला अपॉइंटमेंट नहीं मिला। और कुछ मदद चाहिए?' }
   }
+  if (appts.length > 1) {
+    const list = appts.map(a => `${a.patient_name || 'patient'} (${a.doctors?.full_name || 'doctor'}, ${a.appointment_date})`).join('; ')
+    return { done: false, message: `आपके नंबर पर कई अपॉइंटमेंट हैं: ${list}। किसका कैंसिल करना है — मरीज़ का नाम बता दीजिए?` }
+  }
+  const appt = appts[0]
   try {
     const { error } = await db.from('appointments').update({ status: 'cancelled' }).eq('id', appt.id)
     if (error) throw error
