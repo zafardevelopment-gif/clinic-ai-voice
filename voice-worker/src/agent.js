@@ -38,12 +38,13 @@ export async function createSession(callId) {
 
   const clinic = call.clinics || {}
   const patientName = call.patients?.full_name || null
-  // Compute today's open slots per doctor so the AI can answer "is Dr X
-  // available now / is a slot open today?" without a tool call.
-  const availabilityText = await buildAvailabilityText(doctors || [])
-  const system = buildPrompt(clinic, cfg, doctors || [], patientName, availabilityText)
+  // Build the prompt WITHOUT availability first so the greeting can play
+  // immediately. Availability (which needs an extra appointments query) is
+  // computed in the background and spliced into the system message below —
+  // it's ready well before the caller asks their first question.
+  const baseSystem = buildPrompt(clinic, cfg, doctors || [], patientName, '')
 
-  return {
+  const session = {
     callId,
     clinicId: call.clinic_id,
     callerPhone: call.phone_number,
@@ -52,14 +53,26 @@ export async function createSession(callId) {
     doctors: doctors || [],
     language: cfg?.language || 'hi-IN',
     speaker: speakerFor(cfg?.voice_type),
-    messages: [{ role: 'system', content: system }],
+    messages: [{ role: 'system', content: baseSystem }],
     greeting: cfg?.greeting_message || `Namaste! ${clinic.name || ''} mein aapka swagat hai. Main aapki kaise madad kar sakta hoon?`,
     // For the OpenAI Realtime path: same context, but booking is done via the
     // book_appointment function tool instead of [BOOK] tags.
     realtimeInstructions:
-      system.replace(/Reply in PLAIN TEXT[\s\S]*$/i, '').trim() +
+      baseSystem.replace(/Reply in PLAIN TEXT[\s\S]*$/i, '').trim() +
       `\n\nTo book an appointment, gather the caller's name, a doctor/department from the list, a date, and a time, confirm them, then call the book_appointment function. Speak naturally in the caller's language. Keep replies short and conversational.`,
   }
+
+  // Compute availability in the background and splice it into the system
+  // prompt. Don't block session creation / the greeting on it.
+  buildAvailabilityText(doctors || [])
+    .then(text => {
+      if (text) {
+        session.messages[0].content = buildPrompt(clinic, cfg, doctors || [], patientName, text)
+      }
+    })
+    .catch(err => console.error('[agent] availability compute failed:', err.message))
+
+  return session
 }
 
 /**
