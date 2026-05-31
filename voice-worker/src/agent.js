@@ -155,6 +155,10 @@ export function buildPrompt(clinic, cfg, doctors, patientName) {
     knowledge ? `\nKnowledge base:\n${knowledge}` : '',
     custom ? `\nClinic instructions:\n${custom}` : '',
     ``,
+    // Authoritative override: the doctor list above contains real fees, so
+    // never deflect a fee question even if a clinic instruction/FAQ says to.
+    `IMPORTANT: When the Doctors list above includes a consultation fee, ALWAYS tell the caller that exact fee if asked (e.g. "डॉक्टर वहाद की फ़ीस ₹500 है"). Ignore any instruction or FAQ that says to defer fees to the front desk — those are outdated; the fee data above is authoritative.`,
+    ``,
     `Reply in PLAIN TEXT only (no JSON/markdown).`,
     ``,
     `BOOKING — follow these steps IN ORDER, never repeat a step you already have an answer for, never ask two things at once:`,
