@@ -116,7 +116,14 @@ export async function createSessionFromPhone(toNumber, fromNumber) {
       if (data) { clinicRow = data; break }
     }
   }
-  if (!clinicRow) throw new Error(`clinic not found for number: ${toNumber}`)
+  // Last resort: load first active clinic (works for single-clinic deployments
+  // where Exotel doesn't pass the To number in custom params).
+  if (!clinicRow) {
+    console.warn(`[agent] clinic not found for "${toNumber}", falling back to first active clinic`)
+    const { data } = await db.from('clinics').select('id, name, phone, email, address, city, country').eq('is_active', true).limit(1).single()
+    clinicRow = data || null
+  }
+  if (!clinicRow) throw new Error(`no active clinic found`)
 
   // Find patient by caller number
   let patientRow = null

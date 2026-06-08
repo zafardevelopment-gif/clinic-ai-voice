@@ -161,6 +161,8 @@ wss.on('connection', (ws, req) => {
         const rawCallId = msg.start?.customParameters?.callId || msg.start?.customParameters?.call_id || callId
         callId = (rawCallId && rawCallId !== 'ws') ? rawCallId : null
 
+        // Log the FULL start message so we can see exactly what Exotel sends
+        console.log('[ws] FULL start msg:', JSON.stringify(msg).slice(0, 800))
         console.log(`[ws] stream start — callId=${callId} from=${callerFrom} to=${callerTo} streamSid=${streamSid}`)
 
         try {
@@ -170,9 +172,12 @@ wss.on('connection', (ws, req) => {
           } else {
             // Exotel VoiceBot path: no pre-created callId — look up clinic from
             // the dialed number (To) and create the call record on the fly.
+            // If to/from aren't in the start event, createSessionFromPhone falls
+            // back to the first active clinic (single-clinic deployments).
             session = await createSessionFromPhone(callerTo, callerFrom)
             callId = session?.callId
           }
+          console.log(`[ws] session ready — clinic=${session?.clinicId} greeting="${(session?.greeting||'').slice(0,50)}"`)
           await speak(session.greeting, 0.9)
         } catch (err) {
           console.error('[ws] session init failed:', err?.message || err)
@@ -180,7 +185,8 @@ wss.on('connection', (ws, req) => {
           if (!session) {
             session = { callId, messages: [{ role: 'system', content: 'You are a clinic phone receptionist. Be brief and helpful.' }], doctors: [], language: 'hi-IN', speaker: 'anushka', greeting: 'Namaste! Aap clinic mein phone kiya hai. Main aapki kaise madad kar sakta hoon?' }
           }
-          try { await speak(session.greeting) } catch {}
+          console.log('[ws] using fallback session, greeting now...')
+          try { await speak(session.greeting) } catch (e2) { console.error('[ws] fallback speak failed:', e2.message) }
         }
         break
       }
