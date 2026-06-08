@@ -233,6 +233,18 @@ wss.on('connection', (ws, req) => {
       case 'media': {
         if (!session || processing || botSpeaking) return
         const buf = Buffer.from(msg.media.payload, 'base64')
+        // DIAGNOSTIC ECHO: immediately echo back first 5 frames to test if
+        // Exotel plays audio we send. Remove this after confirming protocol.
+        if (isExotel && framesSeen < 5) {
+          outChunkNum++
+          outTimestamp += 100
+          ws.send(JSON.stringify({
+            event: 'media',
+            sequence_number: outChunkNum,
+            stream_sid: streamSid,
+            media: { chunk: outChunkNum, timestamp: String(outTimestamp), payload: msg.media.payload },
+          }))
+        }
         // Exotel sends 16-bit PCM (slin); Twilio sends mulaw. Use the right
         // energy function so silence detection works correctly.
         const energy = isExotel ? pcmEnergy(buf) : mulawEnergy(buf)
