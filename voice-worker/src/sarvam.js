@@ -61,7 +61,7 @@ export async function synthesize(text, targetLanguage = 'hi-IN', speaker = 'anus
       model: 'bulbul:v2',
       speech_sample_rate: 8000,
       // Exotel VoiceBot requires 16-bit PCM (slin) @ 8kHz, not mulaw.
-      output_audio_codec: 'pcm',
+      output_audio_codec: 'linear16',
       pace,
     }),
   })
