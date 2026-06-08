@@ -86,13 +86,15 @@ wss.on('connection', (ws, req) => {
   function sendAudio(pcmBuf) {
     if (closed) return
     if (isExotel) {
-      // Exotel: chunked media events, 320 bytes per chunk (100ms of 16-bit PCM @ 8kHz)
-      const CHUNK = 320
+      // Exotel expects base64-encoded audio matching what it sent us.
+      // media_format says encoding:base64, sample_rate:8000, bit_rate:128kbps
+      // Send in chunks of ~3200 bytes (min 3.2k per docs), multiples of 320.
+      const CHUNK = 3200
       for (let i = 0; i < pcmBuf.length; i += CHUNK) {
         if (closed) return
         const slice = pcmBuf.subarray(i, i + CHUNK)
         outChunkNum++
-        outTimestamp += 100
+        outTimestamp += 200
         ws.send(JSON.stringify({
           event: 'media',
           sequence_number: outChunkNum,
@@ -129,8 +131,8 @@ wss.on('connection', (ws, req) => {
       // For Twilio: wait real playback time so botSpeaking blocks echo correctly.
       // For Exotel: Exotel buffers the full audio and plays it — we still wait
       // the same duration so we don't start listening before playback ends.
-      // PCM: 2 bytes/sample @ 8kHz. mulaw: 1 byte/sample @ 8kHz.
-      const bytesPerSec = isExotel ? 8000 * 2 : 8000
+      // MP3 @ 128kbps = 16000 bytes/sec. mulaw: 8000 bytes/sec.
+      const bytesPerSec = isExotel ? 16000 : 8000
       const playMs = Math.round((audio.length / bytesPerSec) * 1000) + 300
       await new Promise(r => setTimeout(r, playMs))
     } catch (err) {

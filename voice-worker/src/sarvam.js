@@ -61,7 +61,7 @@ export async function synthesize(text, targetLanguage = 'hi-IN', speaker = 'anus
       model: 'bulbul:v2',
       speech_sample_rate: 8000,
       // Exotel VoiceBot requires 16-bit PCM (slin) @ 8kHz, not mulaw.
-      output_audio_codec: 'linear16',
+      output_audio_codec: 'mp3',
       pace,
     }),
   })
@@ -71,13 +71,7 @@ export async function synthesize(text, targetLanguage = 'hi-IN', speaker = 'anus
   }
   const data = await res.json()
   const b64 = (data.audios && data.audios[0]) || ''
-  const buf = Buffer.from(b64, 'base64')
-  // Sarvam returns a WAV container for linear16/mulaw. Strip the 44-byte WAV
-  // header so callers get raw PCM/mulaw samples ready to stream.
-  if (buf.length > 44 && buf.slice(0, 4).toString() === 'RIFF') {
-    return buf.slice(44)
-  }
-  return buf
+  return Buffer.from(b64, 'base64')
 }
 
 /**
