@@ -125,7 +125,18 @@ function renderExoml(step: CallInstruction): string {
     case 'play':
       return `  <Play>${escapeText(step.url)}</Play>`
     case 'gather':
-      return `  <Gather action="${escapeAttr(step.actionUrl)}" method="POST" timeout="${step.timeoutSec || 5}" finishOnKey="#"><Say>${escapeText(step.prompt)}</Say></Gather>`
+      // input="speech dtmf" enables voice recognition (default is DTMF-only).
+      // language on <Gather> drives Exotel's STT engine.
+      // language + xml:lang on <Say> drives TTS voice selection.
+      return [
+        `  <Gather action="${escapeAttr(step.actionUrl)}" method="POST"`,
+        `    input="speech dtmf"`,
+        `    language="${escapeAttr(step.language || 'en-IN')}"`,
+        `    timeout="${step.timeoutSec || 8}"`,
+        `    finishOnKey="#">`,
+        `    <Say language="${escapeAttr(step.language || 'en-IN')}">${escapeText(step.prompt)}</Say>`,
+        `  </Gather>`,
+      ].join('\n')
     case 'connectStream':
       // Exotel Voicebot Streaming applet — bidirectional audio over WebSocket.
       // Docs: https://support.exotel.com/support/solutions/articles/3000108630
