@@ -15,13 +15,14 @@ const VOICE_ENGINE = (process.env.VOICE_ENGINE || 'sarvam').toLowerCase()
 const FRAME_MS = 20
 const SILENCE_MS = 600          // trailing pause that ends a caller turn
 const MIN_SPEECH_MS = 200       // ignore blips shorter than this
-const MAX_UTTERANCE_MS = 8000   // hard cap — force a turn so we never get stuck
-// Exotel phone-line noise floor sits around 0.03–0.06 in logs (silenceMs=0
-// means noise never drops below SILENCE_THRESHOLD). Lower both thresholds so
-// background hum triggers speech-start at a reasonable level AND the trailing
-// silence actually fires.
-const SPEECH_THRESHOLD = 0.06   // energy above this = caller is speaking
-const SILENCE_THRESHOLD = 0.05  // energy below this = silence (ends the turn)
+const MAX_UTTERANCE_MS = 4000   // hard cap — Exotel noise keeps silenceMs=0 so
+                                 // we rely on this to fire turns; keep it short
+// Exotel phone-line noise floor is ~0.04–0.06 (logs show silenceMs stays 0
+// because line noise never drops below threshold). Set SILENCE_THRESHOLD above
+// the noise floor so a real pause registers, and MIN_SPEECH_MS low so short
+// utterances still fire.
+const SPEECH_THRESHOLD = 0.08   // clearly above Exotel line noise (~0.05)
+const SILENCE_THRESHOLD = 0.06  // above noise floor — a genuine pause drops here
 
 const server = http.createServer((req, res) => {
   // Health check for Render/hosting.
@@ -75,17 +76,32 @@ wss.on('connection', (ws, req) => {
   let peakEnergy = 0           // diagnostics: loudest frame energy seen
   let botSpeaking = false      // ignore inbound audio while we're talking (echo)
 
-  // Stream mulaw audio back to Twilio as outbound media. Split into 160-byte
-  // (20ms) frames — but DON'T pace them: Twilio buffers and plays at real time
-  // on its side. Sending all frames immediately means the reply starts playing
-  // right away instead of dribbling out over many seconds.
+  // Stream mulaw audio back to the carrier.
+  // Twilio expects JSON { event:'media', streamSid, media:{ payload:<base64> } }.
+  // Exotel VoiceBot expects raw binary mulaw frames (no JSON wrapper) paced at
+  // 20ms per 160-byte frame so the jitter buffer plays smoothly.
   function sendAudio(mulawBuf) {
-    if (!streamSid || closed) return
+    if (closed) return
     const FRAME = 160
-    for (let i = 0; i < mulawBuf.length; i += FRAME) {
-      if (closed) return
-      const payload = mulawBuf.subarray(i, i + FRAME).toString('base64')
-      ws.send(JSON.stringify({ event: 'media', streamSid, media: { payload } }))
+    const isExotel = !streamSid // Exotel doesn't send a streamSid in start event
+    if (isExotel) {
+      // Send raw binary, paced at real-time (160 bytes = 20ms @ 8kHz mulaw)
+      let offset = 0
+      function sendNextFrame() {
+        if (closed || offset >= mulawBuf.length) return
+        const end = Math.min(offset + FRAME, mulawBuf.length)
+        ws.send(mulawBuf.subarray(offset, end))
+        offset = end
+        setTimeout(sendNextFrame, FRAME_MS)
+      }
+      sendNextFrame()
+    } else {
+      // Twilio: JSON-wrapped base64, no pacing needed (Twilio buffers on its side)
+      for (let i = 0; i < mulawBuf.length; i += FRAME) {
+        if (closed) return
+        const payload = mulawBuf.subarray(i, i + FRAME).toString('base64')
+        ws.send(JSON.stringify({ event: 'media', streamSid, media: { payload } }))
+      }
     }
   }
 
