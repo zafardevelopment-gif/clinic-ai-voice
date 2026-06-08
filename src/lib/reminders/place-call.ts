@@ -131,6 +131,7 @@ export async function placeReminderCall(reminderId: string): Promise<PlaceCallRe
   // 5. Decide caller ID. Use clinic phone if present, else env fallback.
   const fromNumber =
     clinic?.phone ||
+    process.env.EXOTEL_OUTBOUND_FROM ||
     process.env.TWILIO_OUTBOUND_FROM ||
     ''
 
