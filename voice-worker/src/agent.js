@@ -89,6 +89,88 @@ export async function createSession(callId) {
 }
 
 /**
+ * Exotel VoiceBot path: no pre-created callId.
+ * Look up clinic from the dialed number, find/create patient, create call record,
+ * then build a full session object identical to createSession().
+ */
+export async function createSessionFromPhone(toNumber, fromNumber) {
+  // Build number variants (Indian mobile: 10-digit, 0-prefix, +91, 91)
+  function variants(raw) {
+    const d = (raw || '').replace(/\D/g, '')
+    const s = new Set([raw, d])
+    if (d.length === 10) { s.add('0'+d); s.add('+91'+d); s.add('91'+d) }
+    if (d.length === 11 && d.startsWith('0')) { const t=d.slice(1); s.add(t); s.add('+91'+t); s.add('91'+t) }
+    if (d.length === 12 && d.startsWith('91')) { const t=d.slice(2); s.add(t); s.add('0'+t); s.add('+91'+t) }
+    return [...s]
+  }
+
+  // Find clinic by dialed number
+  let clinicRow = null
+  for (const num of variants(toNumber)) {
+    const { data } = await db.from('clinics').select('id, name, phone, email, address, city, country').eq('twilio_number', num).eq('is_active', true).single()
+    if (data) { clinicRow = data; break }
+  }
+  if (!clinicRow) {
+    for (const num of variants(toNumber)) {
+      const { data } = await db.from('clinics').select('id, name, phone, email, address, city, country').eq('phone', num).eq('is_active', true).single()
+      if (data) { clinicRow = data; break }
+    }
+  }
+  if (!clinicRow) throw new Error(`clinic not found for number: ${toNumber}`)
+
+  // Find patient by caller number
+  let patientRow = null
+  if (fromNumber) {
+    const { data } = await db.from('patients').select('id, full_name').eq('clinic_id', clinicRow.id).eq('phone', fromNumber).maybeSingle()
+    patientRow = data || null
+  }
+
+  // Create call record
+  const { data: call } = await db
+    .from('calls')
+    .insert({ clinic_id: clinicRow.id, phone_number: fromNumber || 'unknown', patient_id: patientRow?.id || null, call_type: 'query' })
+    .select('id, created_at')
+    .single()
+  if (!call) throw new Error('failed to create call record')
+
+  // Load config + doctors
+  const [{ data: cfg }, doctorsRes] = await Promise.all([
+    db.from('voice_agent_config').select('*').eq('clinic_id', clinicRow.id).single(),
+    db.from('doctors').select('id, full_name, specialization, department_id, is_active, departments(name)').eq('clinic_id', clinicRow.id).eq('is_active', true).then(r => r, err => ({ data: null, error: err })),
+  ])
+  const doctors = doctorsRes?.data || []
+  const patientName = patientRow?.full_name || null
+  const baseSystem = buildPrompt(clinicRow, cfg, doctors, patientName, '')
+
+  const session = {
+    callId: call.id,
+    clinicId: clinicRow.id,
+    callerPhone: fromNumber || 'unknown',
+    patientId: patientRow?.id || null,
+    callerName: patientName,
+    startedAt: call.created_at,
+    doctors,
+    language: cfg?.language || 'hi-IN',
+    speaker: speakerFor(cfg?.voice_type),
+    messages: [{ role: 'system', content: baseSystem }],
+    greeting: clarifyGreeting(cfg?.greeting_message, clinicRow.name),
+    realtimeInstructions: baseSystem,
+  }
+
+  // Load availability in background (don't delay greeting)
+  Promise.all([
+    buildAvailabilityText(doctors),
+    buildCallerContext(session, patientName),
+  ]).then(([availText, callerInfo]) => {
+    if (availText || callerInfo) {
+      session.messages[0].content = buildPrompt(clinicRow, cfg, doctors, patientName, availText, callerInfo)
+    }
+  }).catch(err => console.error('[agent] context compute failed:', err.message))
+
+  return session
+}
+
+/**
  * Run one turn: append the caller's transcript, get the FULL AI reply in one
  * shot (so TTS produces a single smooth audio clip — streaming chopped it into
  * choppy per-sentence clips), create a booking if tagged, and return the text

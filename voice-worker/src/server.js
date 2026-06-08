@@ -1,7 +1,7 @@
 import 'dotenv/config'
 import http from 'http'
 import { WebSocketServer } from 'ws'
-import { createSession, runTurn } from './agent.js'
+import { createSession, createSessionFromPhone, runTurn } from './agent.js'
 import { transcribe, synthesize, detectTtsLanguage } from './sarvam.js'
 import { handleRealtimeCall } from './realtime.js'
 
@@ -149,25 +149,38 @@ wss.on('connection', (ws, req) => {
 
     switch (msg.event) {
       case 'start': {
-        streamSid = msg.start.streamSid
-        // callId is passed as a custom parameter from the <Stream> TwiML
-        // (falls back to the path-derived id set on connection).
-        callId = msg.start.customParameters?.callId || callId
-        console.log('[ws] stream start, callId=', callId)
-        if (!callId) { ws.close(); return }
+        // Exotel VoiceBot sends streamSid at the TOP LEVEL (msg.streamSid).
+        // Twilio nests it inside msg.start.streamSid. Support both.
+        streamSid = msg.streamSid || msg.start?.streamSid
+        // Exotel also sends from/to at top level of msg.start
+        const callerFrom = msg.start?.from || msg.start?.From || msg.start?.customParameters?.from || ''
+        const callerTo   = msg.start?.to   || msg.start?.To   || msg.start?.customParameters?.to   || ''
+
+        // callId from custom params, or from URL path.
+        // If path was /ws (no callId), callId='ws' which is invalid — treat as missing.
+        const rawCallId = msg.start?.customParameters?.callId || msg.start?.customParameters?.call_id || callId
+        callId = (rawCallId && rawCallId !== 'ws') ? rawCallId : null
+
+        console.log(`[ws] stream start — callId=${callId} from=${callerFrom} to=${callerTo} streamSid=${streamSid}`)
+
         try {
-          session = await createSession(callId)
-          // Slightly slower greeting (pace 0.9) so the clinic name is clear.
+          if (callId) {
+            // Normal Twilio path: callId pre-created by /api/voice/incoming-call
+            session = await createSession(callId)
+          } else {
+            // Exotel VoiceBot path: no pre-created callId — look up clinic from
+            // the dialed number (To) and create the call record on the fly.
+            session = await createSessionFromPhone(callerTo, callerFrom)
+            callId = session?.callId
+          }
           await speak(session.greeting, 0.9)
         } catch (err) {
-          // Never drop the call silently. Greet with a safe fallback so the
-          // caller hears something and the line stays open for the front desk.
           console.error('[ws] session init failed:', err?.message || err)
-          try { await speak('Namaste! Ek minute, main aapki call connect kar raha hoon.') } catch {}
-          // Give a minimal session so the conversation loop doesn't crash.
+          // Fallback: still greet so the caller isn't left in silence.
           if (!session) {
-            session = { callId, messages: [{ role: 'system', content: 'You are a clinic phone receptionist. Be brief and helpful.' }], doctors: [], language: 'hi-IN', speaker: 'anushka' }
+            session = { callId, messages: [{ role: 'system', content: 'You are a clinic phone receptionist. Be brief and helpful.' }], doctors: [], language: 'hi-IN', speaker: 'anushka', greeting: 'Namaste! Aap clinic mein phone kiya hai. Main aapki kaise madad kar sakta hoon?' }
           }
+          try { await speak(session.greeting) } catch {}
         }
         break
       }
