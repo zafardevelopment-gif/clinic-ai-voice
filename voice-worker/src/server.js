@@ -77,31 +77,30 @@ wss.on('connection', (ws, req) => {
   let botSpeaking = false      // ignore inbound audio while we're talking (echo)
 
   // Stream mulaw audio back to the carrier.
-  // Twilio expects JSON { event:'media', streamSid, media:{ payload:<base64> } }.
-  // Exotel VoiceBot expects raw binary mulaw frames (no JSON wrapper) paced at
-  // 20ms per 160-byte frame so the jitter buffer plays smoothly.
+  // Twilio: JSON { event:'media', streamSid, media:{ payload:<base64> } } per frame.
+  // Exotel VoiceBot: JSON { event:'playAudio', media:{ payload:<base64>, encoding:'audio/mulaw', sampleRate:8000 } }
+  // with the FULL audio in one message — Exotel buffers and plays it entirely.
   function sendAudio(mulawBuf) {
     if (closed) return
-    const FRAME = 160
-    const isExotel = !streamSid // Exotel doesn't send a streamSid in start event
-    if (isExotel) {
-      // Send raw binary, paced at real-time (160 bytes = 20ms @ 8kHz mulaw)
-      let offset = 0
-      function sendNextFrame() {
-        if (closed || offset >= mulawBuf.length) return
-        const end = Math.min(offset + FRAME, mulawBuf.length)
-        ws.send(mulawBuf.subarray(offset, end))
-        offset = end
-        setTimeout(sendNextFrame, FRAME_MS)
-      }
-      sendNextFrame()
-    } else {
-      // Twilio: JSON-wrapped base64, no pacing needed (Twilio buffers on its side)
+    if (streamSid) {
+      // Twilio path: per-frame JSON
+      const FRAME = 160
       for (let i = 0; i < mulawBuf.length; i += FRAME) {
         if (closed) return
         const payload = mulawBuf.subarray(i, i + FRAME).toString('base64')
         ws.send(JSON.stringify({ event: 'media', streamSid, media: { payload } }))
       }
+    } else {
+      // Exotel VoiceBot path: single playAudio message with full audio
+      const payload = mulawBuf.toString('base64')
+      ws.send(JSON.stringify({
+        event: 'playAudio',
+        media: {
+          payload,
+          encoding: 'audio/mulaw',
+          sampleRate: 8000,
+        },
+      }))
     }
   }
 
@@ -116,7 +115,10 @@ wss.on('connection', (ws, req) => {
       const audio = await synthesize(t, ttsLang, session?.speaker || 'anushka', pace)
       console.log(`[${callId}] speaking ${audio.length} bytes (${ttsLang}): ${t.slice(0, 40)}`)
       sendAudio(audio)
-      const playMs = Math.round((audio.length / 8000) * 1000) + 120
+      // For Twilio: wait real playback time so botSpeaking blocks echo correctly.
+      // For Exotel: Exotel buffers the full audio and plays it — we still wait
+      // the same duration so we don't start listening before playback ends.
+      const playMs = Math.round((audio.length / 8000) * 1000) + 300
       await new Promise(r => setTimeout(r, playMs))
     } catch (err) {
       console.error('[ws] TTS failed:', err.message)
