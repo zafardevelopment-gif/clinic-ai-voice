@@ -10,6 +10,19 @@ import {
 import { resolveVoice } from '@/lib/telephony/voices'
 
 /**
+ * GET /api/voice/incoming-call
+ *
+ * Exotel Passthru applet sends GET with call params as query string.
+ * Convert query params to the same shape as form params and delegate.
+ */
+export async function GET(req: NextRequest) {
+  const q = req.nextUrl.searchParams
+  const params: Record<string, string> = {}
+  q.forEach((v, k) => { params[k] = v })
+  return handleCall(params)
+}
+
+/**
  * POST /api/voice/incoming-call
  *
  * Inbound call webhook hit by Twilio (dev) or Exotel (prod). Returns
@@ -29,7 +42,6 @@ import { resolveVoice } from '@/lib/telephony/voices'
  *     internal callers that still POST JSON.
  */
 export async function POST(req: NextRequest) {
-  const provider = getTelephonyProvider()
   const contentType = req.headers.get('content-type') || ''
 
   // ── Legacy JSON path (kept so old internal callers don't break) ────────
@@ -38,29 +50,12 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Real telephony webhook (form-urlencoded XML response) ──────────────
-  const { rawBody, params } = await readFormBody(req)
+  const { params } = await readFormBody(req)
+  return handleCall(params)
+}
 
-  const webhookUrl =
-    (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000') +
-    '/api/voice/incoming-call'
-
-  const verified = await provider.verifyWebhook({
-    url: webhookUrl,
-    headers: req.headers,
-    rawBody,
-    formParams: params,
-  })
-
-  if (!verified && process.env.NODE_ENV === 'production') {
-    return xmlResponse(
-      provider.buildResponse([
-        { kind: 'say', text: 'Webhook signature could not be verified.' },
-        { kind: 'hangup' },
-      ]),
-      401,
-    )
-  }
-
+async function handleCall(params: Record<string, string>) {
+  const provider = getTelephonyProvider()
   const incoming = provider.parseIncomingCall(params)
   const supabase = createClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -76,6 +71,10 @@ export async function POST(req: NextRequest) {
   const forwardedFrom = (params.ForwardedFrom || '').trim()
   const dialedNumber = incoming.to
 
+  // Exotel may send numbers in various formats: 09513886363, +919513886363, 919513886363
+  // Build a list of candidate formats to try in the DB lookup.
+  const numberVariants = buildNumberVariants(dialedNumber)
+
   let clinic: { id: string; name: string; is_active: boolean } | null = null
 
   if (forwardedFrom) {
@@ -88,24 +87,28 @@ export async function POST(req: NextRequest) {
     clinic = data
   }
 
-  if (!clinic) {
+  // Try each number variant against twilio_number
+  for (const num of numberVariants) {
+    if (clinic) break
     const { data } = await supabase
       .from('clinics')
       .select('id, name, is_active')
-      .eq('twilio_number', dialedNumber)
+      .eq('twilio_number', num)
       .eq('is_active', true)
       .single()
-    clinic = data
+    clinic = data ?? null
   }
 
-  if (!clinic) {
+  // Try each number variant against phone
+  for (const num of numberVariants) {
+    if (clinic) break
     const { data } = await supabase
       .from('clinics')
       .select('id, name, is_active')
-      .eq('phone', dialedNumber)
+      .eq('phone', num)
       .eq('is_active', true)
       .single()
-    clinic = data
+    clinic = data ?? null
   }
 
   if (!clinic) {
@@ -242,6 +245,38 @@ export async function POST(req: NextRequest) {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/** Build all plausible formats for an Indian phone number so DB lookup
+ *  succeeds regardless of how Exotel/Twilio formats the To field.
+ *  e.g. input "09513886363" → ["09513886363", "+919513886363", "919513886363"]
+ */
+function buildNumberVariants(raw: string): string[] {
+  const digits = raw.replace(/\D/g, '') // strip non-digits
+  const variants = new Set<string>()
+  variants.add(raw) // original as-is
+  variants.add(digits)
+  // Indian mobile: 10-digit local → add 0-prefix and +91 / 91 variants
+  if (digits.length === 10) {
+    variants.add('0' + digits)
+    variants.add('+91' + digits)
+    variants.add('91' + digits)
+  }
+  // 11-digit starting with 0 (e.g. 09513886363)
+  if (digits.length === 11 && digits.startsWith('0')) {
+    const ten = digits.slice(1)
+    variants.add(ten)
+    variants.add('+91' + ten)
+    variants.add('91' + ten)
+  }
+  // 12-digit starting with 91 (e.g. 919513886363)
+  if (digits.length === 12 && digits.startsWith('91')) {
+    const ten = digits.slice(2)
+    variants.add(ten)
+    variants.add('0' + ten)
+    variants.add('+91' + ten)
+  }
+  return Array.from(variants)
+}
 
 function xmlResponse(body: string, status = 200): NextResponse {
   return new NextResponse(body, {
