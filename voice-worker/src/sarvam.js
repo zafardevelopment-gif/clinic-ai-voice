@@ -13,8 +13,11 @@ const KEY = process.env.SARVAM_API_KEY
  * @param {string} languageCode e.g. 'hi-IN', or 'unknown' for auto-detect
  * @returns {Promise<string>} transcript text
  */
-export async function transcribe(mulawBuffer, languageCode = 'unknown') {
-  const wav = mulawToWav(mulawBuffer, 8000)
+// audioEncoding: 'mulaw' (Twilio) or 'pcm' (Exotel slin 16-bit)
+export async function transcribe(audioBuffer, languageCode = 'unknown', audioEncoding = 'mulaw') {
+  const wav = audioEncoding === 'pcm'
+    ? pcmToWav(audioBuffer, 8000)
+    : mulawToWav(audioBuffer, 8000)
   const form = new FormData()
   form.append('file', new Blob([wav], { type: 'audio/wav' }), 'audio.wav')
   // saaras:v3 covers the most Indian languages incl. Maithili (mai-IN), Urdu.
@@ -57,9 +60,8 @@ export async function synthesize(text, targetLanguage = 'hi-IN', speaker = 'anus
       speaker,
       model: 'bulbul:v2',
       speech_sample_rate: 8000,
-      output_audio_codec: 'mulaw',
-      // pace < 1.0 = slower, clearer speech. Used to slow the greeting so the
-      // clinic name is easy to catch.
+      // Exotel VoiceBot requires 16-bit PCM (slin) @ 8kHz, not mulaw.
+      output_audio_codec: 'pcm',
       pace,
     }),
   })
@@ -116,6 +118,26 @@ export function detectTtsLanguage(text, fallback = 'hi-IN') {
   // Mostly Latin letters → English.
   if (has(/[A-Za-z]/)) return 'en-IN'
   return TTS_LANGS.includes(fallback) ? fallback : 'hi-IN'
+}
+
+/** Wrap 16-bit signed PCM samples in a standard WAV (format 1 = PCM) container. */
+function pcmToWav(pcmBuf, sampleRate) {
+  const dataSize = pcmBuf.length
+  const header = Buffer.alloc(44)
+  header.write('RIFF', 0)
+  header.writeUInt32LE(36 + dataSize, 4)
+  header.write('WAVE', 8)
+  header.write('fmt ', 12)
+  header.writeUInt32LE(16, 16)
+  header.writeUInt16LE(1, 20)  // PCM
+  header.writeUInt16LE(1, 22)  // mono
+  header.writeUInt32LE(sampleRate, 24)
+  header.writeUInt32LE(sampleRate * 2, 28) // byte rate (2 bytes/sample)
+  header.writeUInt16LE(2, 32)  // block align
+  header.writeUInt16LE(16, 34) // bits per sample
+  header.write('data', 36)
+  header.writeUInt32LE(dataSize, 40)
+  return Buffer.concat([header, pcmBuf])
 }
 
 /** Wrap raw mulaw samples in a minimal WAV (format 7 = mulaw) container. */

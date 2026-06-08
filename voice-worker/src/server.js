@@ -61,7 +61,8 @@ wss.on('connection', (ws, req) => {
   // ── Sarvam path (default) ───────────────────────────────────────────────────
   /** @type {null | object} */
   let session = null
-  let streamSid = null
+  let streamSid = null   // Twilio: camelCase. Exotel: snake_case (stream_sid)
+  let isExotel = false   // set true once we see Exotel's stream_sid field
   // Fallback: callId may also be in the path (/ws/<callId>); the 'start' event's
   // customParameters.callId takes precedence.
   let callId = (req?.url || '').split('/').filter(Boolean).pop() || null
@@ -76,31 +77,41 @@ wss.on('connection', (ws, req) => {
   let peakEnergy = 0           // diagnostics: loudest frame energy seen
   let botSpeaking = false      // ignore inbound audio while we're talking (echo)
 
-  // Stream mulaw audio back to the carrier.
-  // Twilio: JSON { event:'media', streamSid, media:{ payload:<base64> } } per frame.
-  // Exotel VoiceBot: JSON { event:'playAudio', media:{ payload:<base64>, encoding:'audio/mulaw', sampleRate:8000 } }
-  // with the FULL audio in one message — Exotel buffers and plays it entirely.
-  function sendAudio(mulawBuf) {
+  // Send PCM/mulaw audio back to the carrier.
+  // Exotel: { event:'media', stream_sid, media:{ payload:<base64>, chunk, timestamp } }
+  //         Audio must be 16-bit PCM slin @ 8kHz, chunks of 320 bytes (100ms).
+  // Twilio: { event:'media', streamSid, media:{ payload:<base64> } } per 160-byte frame.
+  let outChunkNum = 0
+  let outTimestamp = 0
+  function sendAudio(pcmBuf) {
     if (closed) return
-    if (streamSid) {
-      // Twilio path: per-frame JSON
-      const FRAME = 160
-      for (let i = 0; i < mulawBuf.length; i += FRAME) {
+    if (isExotel) {
+      // Exotel: chunked media events, 320 bytes per chunk (100ms of 16-bit PCM @ 8kHz)
+      const CHUNK = 320
+      for (let i = 0; i < pcmBuf.length; i += CHUNK) {
         if (closed) return
-        const payload = mulawBuf.subarray(i, i + FRAME).toString('base64')
-        ws.send(JSON.stringify({ event: 'media', streamSid, media: { payload } }))
+        const slice = pcmBuf.subarray(i, i + CHUNK)
+        outChunkNum++
+        outTimestamp += 100
+        ws.send(JSON.stringify({
+          event: 'media',
+          sequence_number: outChunkNum,
+          stream_sid: streamSid,
+          media: {
+            chunk: outChunkNum,
+            timestamp: String(outTimestamp),
+            payload: slice.toString('base64'),
+          },
+        }))
       }
     } else {
-      // Exotel VoiceBot path: single playAudio message with full audio
-      const payload = mulawBuf.toString('base64')
-      ws.send(JSON.stringify({
-        event: 'playAudio',
-        media: {
-          payload,
-          encoding: 'audio/mulaw',
-          sampleRate: 8000,
-        },
-      }))
+      // Twilio: per-frame 160-byte mulaw JSON
+      const FRAME = 160
+      for (let i = 0; i < pcmBuf.length; i += FRAME) {
+        if (closed) return
+        const payload = pcmBuf.subarray(i, i + FRAME).toString('base64')
+        ws.send(JSON.stringify({ event: 'media', streamSid, media: { payload } }))
+      }
     }
   }
 
@@ -118,7 +129,9 @@ wss.on('connection', (ws, req) => {
       // For Twilio: wait real playback time so botSpeaking blocks echo correctly.
       // For Exotel: Exotel buffers the full audio and plays it — we still wait
       // the same duration so we don't start listening before playback ends.
-      const playMs = Math.round((audio.length / 8000) * 1000) + 300
+      // PCM: 2 bytes/sample @ 8kHz. mulaw: 1 byte/sample @ 8kHz.
+      const bytesPerSec = isExotel ? 8000 * 2 : 8000
+      const playMs = Math.round((audio.length / bytesPerSec) * 1000) + 300
       await new Promise(r => setTimeout(r, playMs))
     } catch (err) {
       console.error('[ws] TTS failed:', err.message)
@@ -144,7 +157,7 @@ wss.on('connection', (ws, req) => {
     botSpeaking = true // hold the mic for the whole turn (STT + reply playback)
     try {
       const audio = Buffer.concat(frames)
-      const transcript = await transcribe(audio, 'unknown')
+      const transcript = await transcribe(audio, 'unknown', isExotel ? 'pcm' : 'mulaw')
       if (!transcript) { return }
       console.log(`[${callId}] caller: ${transcript}`)
       const { reply, end } = await runTurn(session, transcript)
@@ -168,9 +181,15 @@ wss.on('connection', (ws, req) => {
 
     switch (msg.event) {
       case 'start': {
-        // Exotel VoiceBot sends streamSid at the TOP LEVEL (msg.streamSid).
-        // Twilio nests it inside msg.start.streamSid. Support both.
-        streamSid = msg.streamSid || msg.start?.streamSid
+        // Exotel sends stream_sid (snake_case) at top level.
+        // Twilio sends streamSid (camelCase) inside msg.start.
+        if (msg.stream_sid) {
+          streamSid = msg.stream_sid
+          isExotel = true
+        } else {
+          streamSid = msg.streamSid || msg.start?.streamSid
+          isExotel = false
+        }
         // Exotel also sends from/to at top level of msg.start
         const callerFrom = msg.start?.from || msg.start?.From || msg.start?.customParameters?.from || ''
         const callerTo   = msg.start?.to   || msg.start?.To   || msg.start?.customParameters?.to   || ''
@@ -212,7 +231,9 @@ wss.on('connection', (ws, req) => {
       case 'media': {
         if (!session || processing || botSpeaking) return
         const buf = Buffer.from(msg.media.payload, 'base64')
-        const energy = mulawEnergy(buf)
+        // Exotel sends 16-bit PCM (slin); Twilio sends mulaw. Use the right
+        // energy function so silence detection works correctly.
+        const energy = isExotel ? pcmEnergy(buf) : mulawEnergy(buf)
         framesSeen++
         if (energy > peakEnergy) peakEnergy = energy
         // Periodic energy log so we can tune the threshold from Render logs.
@@ -286,6 +307,19 @@ function mulawDecode(u) {
   let sample = ((mantissa << 3) + 0x84) << exponent
   sample -= 0x84
   return sign ? -sample : sample
+}
+
+// Energy of a 16-bit PCM (little-endian) buffer, normalized 0..1.
+// Exotel sends slin (signed linear) 16-bit PCM @ 8kHz.
+function pcmEnergy(buf) {
+  if (buf.length < 2) return 0
+  let sum = 0
+  const samples = Math.floor(buf.length / 2)
+  for (let i = 0; i < samples; i++) {
+    const sample = buf.readInt16LE(i * 2)
+    sum += Math.abs(sample)
+  }
+  return sum / samples / 32768
 }
 
 server.listen(PORT, () => console.log(`voice worker listening on :${PORT}`))
