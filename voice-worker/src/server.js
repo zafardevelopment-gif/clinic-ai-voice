@@ -13,14 +13,15 @@ const VOICE_ENGINE = (process.env.VOICE_ENGINE || 'sarvam').toLowerCase()
 // Twilio sends 20ms mulaw frames (160 bytes) @ 8000 Hz. We accumulate frames
 // while the caller speaks and fire a turn after a short trailing silence.
 const FRAME_MS = 20
-const SILENCE_MS = 500          // trailing pause that ends a caller turn
-const MIN_SPEECH_MS = 240       // ignore blips shorter than this
-const MAX_UTTERANCE_MS = 6000   // hard cap — force a turn so we never get stuck
-// Hysteresis: real speech (from logs) is ~0.15–0.25; phone-line noise can sit
-// just above a tiny floor. Use a higher bar to START speech and a lower bar to
-// keep counting silence, so background hum doesn't reset the silence timer.
-const SPEECH_THRESHOLD = 0.04   // energy above this = caller is speaking
-const SILENCE_THRESHOLD = 0.025 // energy below this = silence (ends the turn)
+const SILENCE_MS = 600          // trailing pause that ends a caller turn
+const MIN_SPEECH_MS = 200       // ignore blips shorter than this
+const MAX_UTTERANCE_MS = 8000   // hard cap — force a turn so we never get stuck
+// Exotel phone-line noise floor sits around 0.03–0.06 in logs (silenceMs=0
+// means noise never drops below SILENCE_THRESHOLD). Lower both thresholds so
+// background hum triggers speech-start at a reasonable level AND the trailing
+// silence actually fires.
+const SPEECH_THRESHOLD = 0.06   // energy above this = caller is speaking
+const SILENCE_THRESHOLD = 0.05  // energy below this = silence (ends the turn)
 
 const server = http.createServer((req, res) => {
   // Health check for Render/hosting.
