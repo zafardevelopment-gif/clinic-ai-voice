@@ -127,8 +127,18 @@ function renderExoml(step: CallInstruction): string {
     case 'gather':
       return `  <Gather action="${escapeAttr(step.actionUrl)}" method="POST" timeout="${step.timeoutSec || 5}" finishOnKey="#"><Say>${escapeText(step.prompt)}</Say></Gather>`
     case 'connectStream':
-      // Requires Voicebot Streaming plan from Exotel.
-      return `  <!-- Voicebot Streaming: connect to ${escapeText(step.wsUrl)} -->`
+      // Exotel Voicebot Streaming applet — bidirectional audio over WebSocket.
+      // Docs: https://support.exotel.com/support/solutions/articles/3000108630
+      // Metadata is passed as query params (max 3, total ≤ 256 chars).
+      return [
+        `  <VoiceBot url="${escapeAttr(step.wsUrl)}"`,
+        ...(step.metadata
+          ? Object.entries(step.metadata)
+              .slice(0, 3)
+              .map(([k, v]) => `    customParam${k.charAt(0).toUpperCase() + k.slice(1)}="${escapeAttr(String(v))}"`)
+          : []),
+        `  />`,
+      ].join('\n')
     case 'dial':
       return `  <Dial>${escapeText(step.number)}</Dial>`
     case 'hangup':
