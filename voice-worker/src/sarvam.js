@@ -71,7 +71,13 @@ export async function synthesize(text, targetLanguage = 'hi-IN', speaker = 'anus
   }
   const data = await res.json()
   const b64 = (data.audios && data.audios[0]) || ''
-  return Buffer.from(b64, 'base64')
+  const buf = Buffer.from(b64, 'base64')
+  // Sarvam returns a WAV container for linear16/mulaw. Strip the 44-byte WAV
+  // header so callers get raw PCM/mulaw samples ready to stream.
+  if (buf.length > 44 && buf.slice(0, 4).toString() === 'RIFF') {
+    return buf.slice(44)
+  }
+  return buf
 }
 
 /**
