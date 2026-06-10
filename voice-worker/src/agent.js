@@ -308,7 +308,8 @@ export function buildPrompt(clinic, cfg, doctors, patientName, availabilityText,
     `3. Date: ask which day (if not already given).`,
     `4. Time: ask what time (if not already given).`,
     `Once you have doctor + patient name + date + time, read them back ONCE for confirmation. When the caller says yes/haan/theek hai, append at the very end: [BOOK: <patient name> | <doctor or department> | <YYYY-MM-DD> | <HH:MM 24h>]`,
-    `CRITICAL: inside the [BOOK]/[RESCHEDULE]/[CANCEL] tags, ALWAYS write the doctor's name in ENGLISH letters EXACTLY as it appears in the Doctors list above (e.g. "Mahfooz", NOT "महफूज़"). Your spoken reply stays in the caller's language — only the tag content must use the exact English names from the list.`,
+    `CRITICAL: inside the [BOOK]/[RESCHEDULE]/[CANCEL] tags, ALWAYS write the doctor's name in ENGLISH letters EXACTLY as it appears in the Doctors list above (e.g. "Mahfooz", NOT "महफूज़"), and write the PATIENT name in ENGLISH letters too (transliterate it, e.g. "Zafar" not "ज़फर"). Your spoken reply stays in the caller's language — only the tag content must be in English letters.`,
+    `NAME ACCURACY: speech-to-text often garbles names (e.g. "Zafar" may arrive as "ज़फाक नामा", "Shifa Eqbal" as "शिफायत बाल"). The transcript of a name is UNRELIABLE. So: (1) when the caller gives a name, repeat it back and confirm: "नाम कन्फर्म कर दीजिए — ज़फर, सही है?" (2) If they correct you, use the corrected name. (3) Prefer simple common Indian name spellings over strange ones — if a transcribed name looks like nonsense, ask them to repeat it slowly. Never book until the name is confirmed.`,
     allowReschedule
       ? `RESCHEDULE / CHANGE: if the caller wants to move an existing appointment, ask for the NEW date and/or time. If their number has more than one upcoming appointment (see Caller's existing appointments above), also confirm WHICH patient. Once confirmed, append at the very end: [RESCHEDULE: <patient name or blank> | <YYYY-MM-DD> | <HH:MM 24h>]`
       : `If a caller asks to change/reschedule an appointment, tell them the front desk will handle that and offer to take a message.`,
@@ -380,6 +381,14 @@ export async function tryBook(session, booking) {
   const time = normalizeTime(booking.time || '')
   if (!name || !date || !time) {
     return { booked: false, message: 'बुकिंग के लिए थोड़ी और जानकारी चाहिए — नाम, तारीख़ और समय बता दीजिए।' }
+  }
+  // Date sanity: must be a valid YYYY-MM-DD and not in the past (IST).
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || isNaN(new Date(`${date}T00:00:00`).getTime())) {
+    return { booked: false, message: 'तारीख़ समझ नहीं आई — कृपया दिन दोबारा बता दीजिए।' }
+  }
+  const todayIST = new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  if (date < todayIST) {
+    return { booked: false, message: 'यह तारीख़ बीत चुकी है — आने वाली कोई तारीख़ बता दीजिए।' }
   }
   const doctor = pickDoctor(session.doctors, booking.doctor)
   if (!doctor) {
@@ -456,7 +465,7 @@ export async function tryBook(session, booking) {
     if (isNewPatient) callUpdate.patient_id = patientId
     await db.from('calls').update(callUpdate).eq('id', session.callId)
 
-    return { booked: true, message: `हो गया! आपका अपॉइंटमेंट ${doctor.full_name} के साथ ${date} को ${time.slice(0, 5)} बजे बुक हो गया। कन्फर्मेशन मैसेज आ जाएगा। शुक्रिया!` }
+    return { booked: true, message: `हो गया! आपका अपॉइंटमेंट ${doctor.full_name} के साथ ${date} को ${time.slice(0, 5)} बजे बुक हो गया। शुक्रिया!` }
   } catch (err) {
     console.error('[agent] booking failed:', err.message)
     return { booked: false, message: 'अभी सेव करने में दिक्कत हुई। फ्रंट डेस्क आपको कॉल करके कन्फर्म करेगा। और कुछ?' }
@@ -566,7 +575,7 @@ export async function tryReschedule(session, change) {
     // Awaited (not backgrounded) so finalize() doesn't race and overwrite this.
     await db.from('calls').update({ outcome: 'rescheduled', call_type: 'booking', intent: 'reschedule' }).eq('id', session.callId)
     const docName = appt.doctors?.full_name || 'डॉक्टर'
-    return { done: true, message: `हो गया! आपका अपॉइंटमेंट ${docName} के साथ अब ${newDate} को ${hhmm} बजे है। कन्फर्मेशन मैसेज आ जाएगा। शुक्रिया!` }
+    return { done: true, message: `हो गया! आपका अपॉइंटमेंट ${docName} के साथ अब ${newDate} को ${hhmm} बजे है। शुक्रिया!` }
   } catch (err) {
     console.error('[agent] reschedule failed:', err.message)
     return { done: false, message: 'अभी बदलने में दिक्कत हुई। फ्रंट डेस्क आपको कॉल करके कन्फर्म करेगा। और कुछ?' }
