@@ -336,4 +336,13 @@ function pcmEnergy(buf) {
   return sum / samples / 32768
 }
 
+// Keep-alive: Render free tier spins down after ~15 min idle (50s+ cold start
+// = dead air for callers). Self-ping every 10 min to stay awake.
+const SELF_URL = process.env.RENDER_EXTERNAL_URL || process.env.SELF_URL
+if (SELF_URL) {
+  setInterval(() => {
+    fetch(`${SELF_URL.replace(/\/$/, '')}/health`).catch(() => {})
+  }, 10 * 60 * 1000)
+}
+
 server.listen(PORT, () => console.log(`voice worker listening on :${PORT}`))

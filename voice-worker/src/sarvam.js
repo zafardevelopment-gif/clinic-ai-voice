@@ -60,8 +60,9 @@ export async function synthesize(text, targetLanguage = 'hi-IN', speaker = 'anus
       speaker,
       model: 'bulbul:v2',
       speech_sample_rate: 8000,
-      // Exotel VoiceBot requires 16-bit PCM (slin) @ 8kHz, not mulaw.
-      output_audio_codec: 'mp3',
+      // Exotel VoiceBot requires raw 16-bit PCM (slin) @ 8kHz. Request WAV
+      // (PCM16 inside) and strip the WAV header below. MP3 here = no voice!
+      output_audio_codec: 'wav',
       pace,
     }),
   })
@@ -71,7 +72,23 @@ export async function synthesize(text, targetLanguage = 'hi-IN', speaker = 'anus
   }
   const data = await res.json()
   const b64 = (data.audios && data.audios[0]) || ''
-  return Buffer.from(b64, 'base64')
+  // Strip WAV container → raw slin PCM bytes ready for Exotel.
+  return wavToPcm(Buffer.from(b64, 'base64'))
+}
+
+/** Extract raw PCM data from a WAV container. Returns input if not WAV. */
+function wavToPcm(buf) {
+  if (buf.length < 44 || buf.toString('ascii', 0, 4) !== 'RIFF' || buf.toString('ascii', 8, 12) !== 'WAVE') {
+    return buf
+  }
+  let offset = 12
+  while (offset + 8 <= buf.length) {
+    const id = buf.toString('ascii', offset, offset + 4)
+    const size = buf.readUInt32LE(offset + 4)
+    if (id === 'data') return buf.subarray(offset + 8, Math.min(offset + 8 + size, buf.length))
+    offset += 8 + size + (size % 2) // chunks are word-aligned
+  }
+  return buf.subarray(44)
 }
 
 /**
