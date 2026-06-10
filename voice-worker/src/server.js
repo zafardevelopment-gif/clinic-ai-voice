@@ -13,7 +13,7 @@ const VOICE_ENGINE = (process.env.VOICE_ENGINE || 'sarvam').toLowerCase()
 // Twilio sends 20ms mulaw frames (160 bytes) @ 8000 Hz. We accumulate frames
 // while the caller speaks and fire a turn after a short trailing silence.
 const FRAME_MS = 20
-const SILENCE_MS = 600          // trailing pause that ends a caller turn
+const SILENCE_MS = 450          // trailing pause that ends a caller turn (lower = snappier)
 const MIN_SPEECH_MS = 200       // ignore blips shorter than this
 const MAX_UTTERANCE_MS = 4000   // hard cap — Exotel noise keeps silenceMs=0 so
                                  // we rely on this to fire turns; keep it short
@@ -133,7 +133,7 @@ wss.on('connection', (ws, req) => {
       // the same duration so we don't start listening before playback ends.
       // MP3 @ 128kbps = 16000 bytes/sec. mulaw: 8000 bytes/sec.
       const bytesPerSec = isExotel ? 16000 : 8000
-      const playMs = Math.round((audio.length / bytesPerSec) * 1000) + 300
+      const playMs = Math.round((audio.length / bytesPerSec) * 1000) + 150
       await new Promise(r => setTimeout(r, playMs))
     } catch (err) {
       console.error('[ws] TTS failed:', err.message)
@@ -218,7 +218,7 @@ wss.on('connection', (ws, req) => {
             callId = session?.callId
           }
           console.log(`[ws] session ready — clinic=${session?.clinicId} greeting="${(session?.greeting||'').slice(0,50)}"`)
-          await speak(session.greeting, 0.9)
+          await speak(session.greeting, 1.0)
         } catch (err) {
           console.error('[ws] session init failed:', err?.message || err)
           // Fallback: still greet so the caller isn't left in silence.

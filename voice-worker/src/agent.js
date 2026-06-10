@@ -308,6 +308,7 @@ export function buildPrompt(clinic, cfg, doctors, patientName, availabilityText,
     `3. Date: ask which day (if not already given).`,
     `4. Time: ask what time (if not already given).`,
     `Once you have doctor + patient name + date + time, read them back ONCE for confirmation. When the caller says yes/haan/theek hai, append at the very end: [BOOK: <patient name> | <doctor or department> | <YYYY-MM-DD> | <HH:MM 24h>]`,
+    `CRITICAL: inside the [BOOK]/[RESCHEDULE]/[CANCEL] tags, ALWAYS write the doctor's name in ENGLISH letters EXACTLY as it appears in the Doctors list above (e.g. "Mahfooz", NOT "महफूज़"). Your spoken reply stays in the caller's language — only the tag content must use the exact English names from the list.`,
     allowReschedule
       ? `RESCHEDULE / CHANGE: if the caller wants to move an existing appointment, ask for the NEW date and/or time. If their number has more than one upcoming appointment (see Caller's existing appointments above), also confirm WHICH patient. Once confirmed, append at the very end: [RESCHEDULE: <patient name or blank> | <YYYY-MM-DD> | <HH:MM 24h>]`
       : `If a caller asks to change/reschedule an appointment, tell them the front desk will handle that and offer to take a message.`,
@@ -322,7 +323,11 @@ export function buildPrompt(clinic, cfg, doctors, patientName, availabilityText,
     `- Doctor not working that day / outside hours: suggest the nearest day the doctor is available (see Availability/open days).`,
     `- Caller unsure which doctor: ask the reason/symptom and suggest a department/doctor from the list.`,
     `- Multiple people on one phone: the same caller may book for several family members; always confirm the patient's name for THIS booking. When rescheduling/cancelling and more than one appointment exists, ask which patient.`,
-    `- Returning caller with an existing appointment: acknowledge it (from Caller's existing appointments) before booking another.`,
+    `- Returning caller with an existing appointment: in your VERY FIRST reply of the call (whatever they say first), acknowledge it and offer the choices, e.g. "आपका <doctor> के साथ <date> को अपॉइंटमेंट पहले से बुक है — क्या आप उसे बदलना चाहेंगे, कैंसिल करना चाहेंगे, या कोई नई बुकिंग करनी है?" Then handle their choice. Do this only ONCE — do not repeat it later in the call.`,
+    `- If they choose "change/badalna": follow the RESCHEDULE flow (ask new date/time, then [RESCHEDULE: ...]).`,
+    `- If they choose "cancel": follow the CANCEL flow ([CANCEL: ...]).`,
+    `- If they choose "nayi booking": run the normal BOOKING steps; if it's for a different person (family member), ask that person's name and book under it.`,
+    `- If the caller's number has multiple upcoming appointments, list them briefly and ask WHICH one they mean before changing/cancelling.`,
     `- Vague date/time ("subah", "shaam", "jaldi"): ask for a specific day and clock time before booking.`,
     `- Caller gives only partial info: ask ONLY for the missing piece, never re-ask what you already have.`,
     `- Emergency / urgent medical wording: tell them to contact emergency services or come immediately; do not just book a future slot.`,
@@ -590,12 +595,45 @@ export async function tryCancel(session, opts = {}) {
   }
 }
 
+// Basic Devanagari → Latin transliteration so a doctor name written in Hindi
+// script ("महफूज़") can still match the Latin DB name ("Mahfooz").
+const DEV2LAT = {
+  'क':'k','ख':'kh','ग':'g','घ':'gh','ङ':'n','च':'ch','छ':'chh','ज':'j','झ':'jh','ञ':'n',
+  'ट':'t','ठ':'th','ड':'d','ढ':'dh','ण':'n','त':'t','थ':'th','द':'d','ध':'dh','न':'n',
+  'प':'p','फ':'ph','ब':'b','भ':'bh','म':'m','य':'y','र':'r','ल':'l','व':'w','श':'sh',
+  'ष':'sh','स':'s','ह':'h','ज़':'z','फ़':'f','क़':'q','ग़':'g','ड़':'r','ढ़':'rh','य़':'y',
+  'अ':'a','आ':'aa','इ':'i','ई':'i','उ':'u','ऊ':'u','ऋ':'ri','ए':'e','ऐ':'ai','ओ':'o','औ':'au',
+  'ा':'a','ि':'i','ी':'i','ु':'u','ू':'u','ृ':'ri','े':'e','ै':'ai','ो':'o','ौ':'au',
+  'ं':'n','ँ':'n','ः':'','़':'','्':'',
+}
+function transliterate(s) {
+  let out = ''
+  for (const ch of s) out += DEV2LAT[ch] !== undefined ? DEV2LAT[ch] : ch
+  return out
+}
+// Consonant skeleton: vowels differ wildly between transliterations
+// ("mahafuz" vs "mahfooz"), but consonants stay stable (mhfz === mhfz).
+function skeleton(s) {
+  return (s || '').toLowerCase().replace(/[^a-z]/g, '').replace(/v/g, 'w').replace(/[aeiou]/g, '')
+}
+
 function pickDoctor(doctors, q) {
   if (!doctors.length) return null
-  const s = (q || '').toLowerCase().trim()
+  let s = (q || '').toLowerCase().trim()
   if (s) {
+    // Transliterate if the name came in Devanagari (e.g. from a Hindi reply).
+    if (/[ऀ-ॿ]/.test(s)) s = transliterate(s).toLowerCase()
     const byName = doctors.find(d => d.full_name.toLowerCase().includes(s) || s.includes(d.full_name.toLowerCase()))
     if (byName) return byName
+    // Fuzzy: consonant-skeleton match handles spelling variations.
+    const sk = skeleton(s)
+    if (sk.length >= 2) {
+      const bySkeleton = doctors.find(d => {
+        const dk = skeleton(d.full_name)
+        return dk.includes(sk) || sk.includes(dk)
+      })
+      if (bySkeleton) return bySkeleton
+    }
     const byDept = doctors.find(d => (d.departments?.name || '').toLowerCase().includes(s) || (d.specialization || '').toLowerCase().includes(s))
     if (byDept) return byDept
   }
