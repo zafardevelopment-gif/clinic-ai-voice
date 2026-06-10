@@ -78,34 +78,34 @@ wss.on('connection', (ws, req) => {
   let botSpeaking = false      // ignore inbound audio while we're talking (echo)
 
   // Send PCM/mulaw audio back to the carrier.
-  // Exotel: { event:'media', stream_sid, media:{ payload:<base64>, chunk, timestamp } }
-  //         Audio must be 16-bit PCM slin @ 8kHz, chunks of 320 bytes (100ms).
+  // Exotel (per official echobot github.com/exotel/voice-streaming):
+  //   { event:'media', stream_sid, media:{ payload:<base64> } }  — ONLY these
+  //   fields. No sequence_number/chunk/timestamp. Audio = raw slin 16-bit PCM
+  //   @ 8kHz, chunks multiple of 320 bytes, PACED (not blasted all at once).
   // Twilio: { event:'media', streamSid, media:{ payload:<base64> } } per 160-byte frame.
-  let outChunkNum = 0
-  let outTimestamp = 0
   function sendAudio(pcmBuf) {
     if (closed) return
     if (isExotel) {
-      // Exotel expects base64-encoded audio matching what it sent us.
-      // media_format says encoding:base64, sample_rate:8000, bit_rate:128kbps
-      // Send in chunks of ~3200 bytes (min 3.2k per docs), multiples of 320.
-      const CHUNK = 3200
-      for (let i = 0; i < pcmBuf.length; i += CHUNK) {
-        if (closed) return
-        const slice = pcmBuf.subarray(i, i + CHUNK)
-        outChunkNum++
-        outTimestamp += 200
-        ws.send(JSON.stringify({
-          event: 'media',
-          sequence_number: outChunkNum,
-          stream_sid: streamSid,
-          media: {
-            chunk: outChunkNum,
-            timestamp: String(outTimestamp),
-            payload: slice.toString('base64'),
-          },
-        }))
+      // Pad to a multiple of 320 bytes with silence (Exotel requirement).
+      if (pcmBuf.length % 320 !== 0) {
+        pcmBuf = Buffer.concat([pcmBuf, Buffer.alloc(320 - (pcmBuf.length % 320))])
       }
+      const CHUNK = 3200 // 100ms of slin @ 8kHz
+      let offset = 0
+      const sendNext = () => {
+        if (closed || ws.readyState !== ws.OPEN) return
+        const slice = pcmBuf.subarray(offset, offset + CHUNK)
+        try {
+          ws.send(JSON.stringify({
+            event: 'media',
+            stream_sid: streamSid,
+            media: { payload: slice.toString('base64') },
+          }))
+        } catch (e) { return }
+        offset += CHUNK
+        if (offset < pcmBuf.length) setTimeout(sendNext, 100) // real-time pacing
+      }
+      sendNext()
     } else {
       // Twilio: per-frame 160-byte mulaw JSON
       const FRAME = 160
@@ -233,18 +233,6 @@ wss.on('connection', (ws, req) => {
       case 'media': {
         if (!session || processing || botSpeaking) return
         const buf = Buffer.from(msg.media.payload, 'base64')
-        // DIAGNOSTIC ECHO: immediately echo back first 5 frames to test if
-        // Exotel plays audio we send. Remove this after confirming protocol.
-        if (isExotel && framesSeen < 5) {
-          outChunkNum++
-          outTimestamp += 100
-          ws.send(JSON.stringify({
-            event: 'media',
-            sequence_number: outChunkNum,
-            stream_sid: streamSid,
-            media: { chunk: outChunkNum, timestamp: String(outTimestamp), payload: msg.media.payload },
-          }))
-        }
         // Exotel sends 16-bit PCM (slin); Twilio sends mulaw. Use the right
         // energy function so silence detection works correctly.
         const energy = isExotel ? pcmEnergy(buf) : mulawEnergy(buf)
