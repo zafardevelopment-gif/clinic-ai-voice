@@ -201,7 +201,7 @@ export async function runTurn(session, transcript) {
     raw = 'Maaf kijiye, thodi dikkat ho rahi hai. Aap dobara bata sakte hain?'
   }
 
-  const { reply: cleaned, booking, reschedule, cancel, end: endTag } = parseTags(raw)
+  const { reply: cleaned, booking, reschedule, cancel, rename, end: endTag } = parseTags(raw)
   let reply = cleaned
   let end = endTag
 
@@ -217,6 +217,9 @@ export async function runTurn(session, transcript) {
     const r = await tryCancel(session, { patient: cancel.patient })
     reply = r.message
     if (r.done) end = true
+  } else if (rename) {
+    const r = await tryRename(session, rename)
+    reply = r.message
   }
 
   session.messages.push({ role: 'assistant', content: reply })
@@ -250,7 +253,8 @@ export function buildPrompt(clinic, cfg, doctors, patientName, availabilityText,
   // Reschedule/cancel are opt-in per clinic (default: reschedule on, cancel off
   // — matches the AI Setup defaults).
   const allowReschedule = cfg?.booking_rules?.allow_reschedule !== false
-  const allowCancel = cfg?.booking_rules?.allow_cancel === true
+  // Default ON: callers can cancel unless the clinic explicitly disables it.
+  const allowCancel = cfg?.booking_rules?.allow_cancel !== false
   const docList = doctors.length
     ? doctors.map(d => {
         // Header line: name (specialization, if allowed) — department
@@ -309,6 +313,7 @@ export function buildPrompt(clinic, cfg, doctors, patientName, availabilityText,
     `4. Time: ask what time (if not already given).`,
     `Once you have doctor + patient name + date + time, read them back ONCE for confirmation. When the caller says yes/haan/theek hai, append at the very end: [BOOK: <patient name> | <doctor or department> | <YYYY-MM-DD> | <HH:MM 24h>]`,
     `CRITICAL: inside the [BOOK]/[RESCHEDULE]/[CANCEL] tags, ALWAYS write the doctor's name in ENGLISH letters EXACTLY as it appears in the Doctors list above (e.g. "Mahfooz", NOT "महफूज़"), and write the PATIENT name in ENGLISH letters too (transliterate it, e.g. "Zafar" not "ज़फर"). Your spoken reply stays in the caller's language — only the tag content must be in English letters.`,
+    `DATES & TIMES in speech: say them SHORT and natural — "14 जून, दोपहर 2 बजे" (English: "14 June, 2 PM"). NEVER speak the year, YYYY-MM-DD format, or 24-hour times like "14:00" — they sound robotic. Only inside [BOOK]/[RESCHEDULE] tags use YYYY-MM-DD and 24h HH:MM.`,
     `NAME ACCURACY: speech-to-text often garbles names (e.g. "Zafar" may arrive as "ज़फाक नामा", "Shifa Eqbal" as "शिफायत बाल"). The transcript of a name is UNRELIABLE. So: (1) when the caller gives a name, repeat it back and confirm: "नाम कन्फर्म कर दीजिए — ज़फर, सही है?" (2) If they correct you, use the corrected name. (3) Prefer simple common Indian name spellings over strange ones — if a transcribed name looks like nonsense, ask them to repeat it slowly. Never book until the name is confirmed.`,
     allowReschedule
       ? `RESCHEDULE / CHANGE: if the caller wants to move an existing appointment, ask for the NEW date and/or time. If their number has more than one upcoming appointment (see Caller's existing appointments above), also confirm WHICH patient. Once confirmed, append at the very end: [RESCHEDULE: <patient name or blank> | <YYYY-MM-DD> | <HH:MM 24h>]`
@@ -316,6 +321,7 @@ export function buildPrompt(clinic, cfg, doctors, patientName, availabilityText,
     allowCancel
       ? `CANCEL: if the caller wants to cancel, confirm once (and WHICH patient, if multiple), then append at the very end: [CANCEL: <patient name or blank>]`
       : `If a caller asks to cancel, tell them the front desk will handle cancellations.`,
+    `NAME CHANGE: if the caller says the booked name is wrong or wants to change it ("naam galat hai", "naam badal do"), ask the correct name, confirm it back once, then append at the very end: [RENAME: <current/old name or blank> | <new name in English letters>]`,
     `Fee/experience/qualification/language questions are NOT bookings — answer them directly from the doctor details above (e.g. state the exact consultation fee or years of experience), then continue. Only say the front desk will confirm if that specific detail is genuinely missing from the list.`,
     `AVAILABILITY questions ("is Dr X available now?", "abhi slot khula hai?", "aaj kitne baje free hai?") are NOT bookings — answer from the Availability section above: if the doctor is open now and has open slots today, say yes and offer the next 1-2 open times; if closed today or fully booked, say so and offer the next working day. Do NOT invent times not listed.`,
     ``,
@@ -368,11 +374,19 @@ function parseTags(raw) {
     text = text.replace(/\[RESCHEDULE:[^\]]*\]?/i, '').trim()
   }
 
+  let rename = null
+  const nm = text.match(/\[RENAME:\s*([^\]]*)\]?/i)
+  if (nm) {
+    const [from, to] = nm[1].split('|').map(s => (s || '').trim())
+    if (to) rename = { from, to }
+    text = text.replace(/\[RENAME:[^\]]*\]?/i, '').trim()
+  }
+
   if (text.startsWith('{')) {
     const r = text.match(/"reply"\s*:\s*"([^"]+)"/)
     if (r) text = r[1]
   }
-  return { reply: text || 'Maaf kijiye, dobara boliye?', booking, reschedule, cancel, end }
+  return { reply: text || 'Maaf kijiye, dobara boliye?', booking, reschedule, cancel, rename, end }
 }
 
 export async function tryBook(session, booking) {
@@ -465,7 +479,7 @@ export async function tryBook(session, booking) {
     if (isNewPatient) callUpdate.patient_id = patientId
     await db.from('calls').update(callUpdate).eq('id', session.callId)
 
-    return { booked: true, message: `हो गया! आपका अपॉइंटमेंट ${doctor.full_name} के साथ ${date} को ${time.slice(0, 5)} बजे बुक हो गया। शुक्रिया!` }
+    return { booked: true, message: `हो गया! आपका अपॉइंटमेंट ${doctor.full_name} के साथ ${speakDate(date)} को ${speakTime(time)} बुक हो गया। शुक्रिया!` }
   } catch (err) {
     console.error('[agent] booking failed:', err.message)
     return { booked: false, message: 'अभी सेव करने में दिक्कत हुई। फ्रंट डेस्क आपको कॉल करके कन्फर्म करेगा। और कुछ?' }
@@ -575,7 +589,7 @@ export async function tryReschedule(session, change) {
     // Awaited (not backgrounded) so finalize() doesn't race and overwrite this.
     await db.from('calls').update({ outcome: 'rescheduled', call_type: 'booking', intent: 'reschedule' }).eq('id', session.callId)
     const docName = appt.doctors?.full_name || 'डॉक्टर'
-    return { done: true, message: `हो गया! आपका अपॉइंटमेंट ${docName} के साथ अब ${newDate} को ${hhmm} बजे है। शुक्रिया!` }
+    return { done: true, message: `हो गया! आपका अपॉइंटमेंट ${docName} के साथ अब ${speakDate(newDate)} को ${speakTime(hhmm)} है। शुक्रिया!` }
   } catch (err) {
     console.error('[agent] reschedule failed:', err.message)
     return { done: false, message: 'अभी बदलने में दिक्कत हुई। फ्रंट डेस्क आपको कॉल करके कन्फर्म करेगा। और कुछ?' }
@@ -597,10 +611,37 @@ export async function tryCancel(session, opts = {}) {
     if (error) throw error
     await db.from('calls').update({ outcome: 'cancelled', call_type: 'booking', intent: 'cancel' }).eq('id', session.callId)
     const docName = appt.doctors?.full_name || 'डॉक्टर'
-    return { done: true, message: `आपका ${docName} के साथ ${appt.appointment_date} का अपॉइंटमेंट कैंसिल कर दिया गया है। शुक्रिया!` }
+    return { done: true, message: `आपका ${docName} के साथ ${speakDate(appt.appointment_date)} का अपॉइंटमेंट कैंसिल कर दिया गया है। शुक्रिया!` }
   } catch (err) {
     console.error('[agent] cancel failed:', err.message)
     return { done: false, message: 'अभी कैंसिल करने में दिक्कत हुई। फ्रंट डेस्क आपको कॉल करके कन्फर्म करेगा। और कुछ?' }
+  }
+}
+
+// Change the patient's name on their record (e.g. STT had garbled it, or the
+// caller wants to correct a booking's name). Finds the caller's upcoming
+// appointment (optionally narrowed by the old name) and renames that patient.
+export async function tryRename(session, { from, to }) {
+  const newName = (to || '').trim()
+  if (!newName) {
+    return { message: 'नया नाम बता दीजिए, मैं बदल दूँगा।' }
+  }
+  const { appts } = await findUpcomingAppointments(session, from)
+  if (!appts.length) {
+    return { message: 'मुझे आपके नंबर पर कोई आने वाला अपॉइंटमेंट नहीं मिला, इसलिए नाम नहीं बदल पाया। और कुछ?' }
+  }
+  if (appts.length > 1) {
+    const list = appts.map(a => `${a.patient_name || 'patient'} (${a.doctors?.full_name || 'doctor'}, ${speakDate(a.appointment_date)})`).join('; ')
+    return { message: `आपके नंबर पर कई अपॉइंटमेंट हैं: ${list}। किसका नाम बदलना है?` }
+  }
+  const appt = appts[0]
+  try {
+    const { error } = await db.from('patients').update({ full_name: newName }).eq('id', appt.patient_id)
+    if (error) throw error
+    return { message: `ठीक है, नाम बदलकर ${newName} कर दिया है। और कुछ मदद चाहिए?` }
+  } catch (err) {
+    console.error('[agent] rename failed:', err.message)
+    return { message: 'अभी नाम बदलने में दिक्कत हुई। फ्रंट डेस्क ठीक कर देगा। और कुछ?' }
   }
 }
 
@@ -647,6 +688,23 @@ function pickDoctor(doctors, q) {
     if (byDept) return byDept
   }
   return doctors[0]
+}
+
+// Speak dates/times naturally and SHORT: "2026-06-14" → "14 जून",
+// "14:00" → "दोपहर 2 बजे". Used in all spoken confirmations.
+const HI_MONTHS = ['जनवरी', 'फ़रवरी', 'मार्च', 'अप्रैल', 'मई', 'जून', 'जुलाई', 'अगस्त', 'सितंबर', 'अक्टूबर', 'नवंबर', 'दिसंबर']
+function speakDate(d) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec((d || '').trim())
+  if (!m) return d
+  return `${+m[3]} ${HI_MONTHS[+m[2] - 1]}`
+}
+function speakTime(t) {
+  const m = /^(\d{1,2}):(\d{2})/.exec((t || '').trim())
+  if (!m) return t
+  const h = +m[1], min = +m[2]
+  const part = h < 4 ? 'रात' : h < 12 ? 'सुबह' : h < 17 ? 'दोपहर' : h < 20 ? 'शाम' : 'रात'
+  let h12 = h % 12; if (h12 === 0) h12 = 12
+  return `${part} ${h12}${min ? `:${String(min).padStart(2, '0')}` : ''} बजे`
 }
 
 function normalizeTime(t) {
