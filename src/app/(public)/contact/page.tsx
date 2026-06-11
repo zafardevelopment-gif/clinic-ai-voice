@@ -32,7 +32,7 @@ export default function ContactPage() {
                 <div className="space-y-4">
                   {[
                     { icon: Mail, label: 'Email', value: 'hello@medivoice.ai', href: 'mailto:hello@medivoice.ai' },
-                    { icon: Phone, label: 'Phone', value: '+91 98765 43210', href: 'tel:+919876543210' },
+                    { icon: Phone, label: 'Phone', value: '+91 92042 98771', href: 'tel:+919204298771' },
                     { icon: MapPin, label: 'Address', value: 'Bengaluru, Karnataka, India', href: null },
                     { icon: Clock, label: 'Support Hours', value: 'Mon–Fri, 9am–6pm IST', href: null },
                   ].map(({ icon: Icon, label, value, href }) => (
