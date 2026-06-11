@@ -6,12 +6,23 @@ export async function updateSession(request: NextRequest) {
   const token = request.cookies.get(SESSION_COOKIE)?.value
   const session = token ? decodeSession(token) : null
 
-  // Public routes — redirect to dashboard if already logged in
-  if (path === '/login' || path === '/') {
+  // Public marketing routes — always accessible
+  const publicPaths = [
+    '/', '/features', '/pricing', '/solutions', '/about', '/contact',
+    '/faq', '/privacy', '/terms', '/request-demo',
+  ]
+  const isPublicMarketing = publicPaths.includes(path) || path.startsWith('/blog')
+
+  // Login page — redirect to dashboard if already logged in
+  if (path === '/login') {
     if (session) {
       const dest = session.role === 'admin' ? '/admin/dashboard' : '/clinic/dashboard'
       return NextResponse.redirect(new URL(dest, request.url))
     }
+    return NextResponse.next()
+  }
+
+  if (isPublicMarketing) {
     return NextResponse.next()
   }
 

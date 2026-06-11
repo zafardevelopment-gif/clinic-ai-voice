@@ -132,6 +132,41 @@
 .animate-livePulse { animation: livePulse 1.8s infinite; }
 .animate-aiPulse   { animation: aiPulse 1.5s infinite; }
 
+/* Public site animations */
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-24px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(24px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.92); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+.animate-slideInLeft  { animation: slideInLeft .6s ease; }
+.animate-slideInRight { animation: slideInRight .6s ease; }
+.animate-scaleIn      { animation: scaleIn .4s ease; }
+
+/* Gradient text utility */
+.gradient-text {
+  background: linear-gradient(135deg, #10b981 0%, #0ea5a4 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Public nav scroll shadow */
+.nav-scrolled {
+  box-shadow: 0 1px 20px rgba(0,0,0,0.06);
+}
+
 /* ── Mobile responsiveness (≤640px) ─────────────────────────────────────────
    App-wide fixes so the admin/clinic dashboards work on phones without editing
    every page individually. */
