@@ -15,6 +15,7 @@ import TestimonialsSection from '@/components/public/home/TestimonialsSection'
 import HomePricingSection from '@/components/public/home/HomePricingSection'
 import HomeFaqSection from '@/components/public/home/HomeFaqSection'
 import CtaSection from '@/components/public/home/CtaSection'
+import LeadCaptureSection from '@/components/public/home/LeadCaptureSection'
 
 export const metadata: Metadata = {
   // Fixed: removed duplicate brand name from title
@@ -67,6 +68,7 @@ export default function HomePage() {
       <TestimonialsSection />
       <HomePricingSection />
       <HomeFaqSection />
+      <LeadCaptureSection />
       <CtaSection />
     </>
   )

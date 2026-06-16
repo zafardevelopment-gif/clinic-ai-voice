@@ -60,7 +60,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <head>
-        <link rel="icon" href="/favicon.ico" />
+        <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2310b981'/%3E%3Crect x='12' y='4' width='8' height='14' rx='4' fill='white'/%3E%3Cpath d='M7 15a9 9 0 0 0 18 0' stroke='white' stroke-width='2.5' fill='none' stroke-linecap='round'/%3E%3Cline x1='16' y1='24' x2='16' y2='28' stroke='white' stroke-width='2.5' stroke-linecap='round'/%3E%3Cline x1='11' y1='28' x2='21' y2='28' stroke='white' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E" type="image/svg+xml" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
       </head>
       <body className="antialiased">{children}</body>

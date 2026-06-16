@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Menu, X, Phone, ChevronDown } from 'lucide-react'
+import { Menu, X, ChevronDown } from 'lucide-react'
 
 const navLinks = [
   { label: 'Features', href: '/features' },
@@ -37,11 +37,16 @@ export default function Navbar() {
         <div className="flex items-center justify-between h-16 lg:h-18">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2.5 group">
-            <div className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center shadow-sm group-hover:bg-emerald-600 transition-colors">
-              <Phone className="w-4 h-4 text-white" />
+            <div className="w-9 h-9 rounded-xl bg-emerald-500 flex items-center justify-center shadow-sm group-hover:bg-emerald-600 transition-colors flex-shrink-0">
+              <svg viewBox="0 0 24 24" className="w-5 h-5" aria-hidden="true" fill="none">
+                <rect x="9" y="2" width="6" height="11" rx="3" fill="white"/>
+                <path d="M5 11a7 7 0 0 0 14 0" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+                <line x1="12" y1="18" x2="12" y2="22" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+                <line x1="8" y1="22" x2="16" y2="22" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+              </svg>
             </div>
-            <span className="font-syne font-700 text-[#0f1f17] text-lg tracking-tight">
-              MediVoice<span className="text-emerald-500"> AI</span>
+            <span className="font-syne font-bold text-[#0f1f17] text-lg tracking-tight">
+              Medi<span className="text-emerald-500">Voice</span> AI
             </span>
           </Link>
 

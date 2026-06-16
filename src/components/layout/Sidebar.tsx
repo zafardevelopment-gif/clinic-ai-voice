@@ -45,6 +45,12 @@ const adminNav: NavSection[] = [
     ],
   },
   {
+    label: 'Leads',
+    items: [
+      { icon: '📬', label: 'Inquiries', href: '/admin/inquiries' },
+    ],
+  },
+  {
     label: 'System',
     items: [
       { icon: '⚙️', label: 'Settings', href: '/admin/settings' },
