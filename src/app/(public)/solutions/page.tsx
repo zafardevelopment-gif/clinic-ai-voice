@@ -4,10 +4,23 @@ import { ArrowRight, CheckCircle2 } from 'lucide-react'
 import CtaSection from '@/components/public/home/CtaSection'
 
 export const metadata: Metadata = {
-  title: 'Solutions — MediVoice AI for Clinics & Hospitals',
+  title: 'AI Receptionist Solutions for Dental, Orthopaedic & Specialist Clinics | MediVoice AI',
   description:
-    'MediVoice AI solutions for dental clinics, general practitioners, specialist centres, multi-specialty hospitals, and clinic chains. Discover how we serve your practice type.',
+    'MediVoice AI solutions for dental clinics, general practitioners, orthopaedic & specialist centres, multi-specialty hospitals, and clinic chains across India. Discover how we serve your practice type.',
+  keywords: [
+    'AI receptionist for dental clinic',
+    'AI receptionist for orthopaedic clinic',
+    'AI receptionist for hospital India',
+    'clinic automation solutions India',
+    'healthcare AI solutions Indian clinics',
+    'automated receptionist specialist clinic',
+  ],
   alternates: { canonical: 'https://medivoice.ai/solutions' },
+  openGraph: {
+    title: 'MediVoice AI Solutions — Dental, Orthopaedic, Hospital & More',
+    description: 'Purpose-built AI receptionist solutions for every type of Indian clinic and hospital.',
+    url: 'https://medivoice.ai/solutions',
+  },
 }
 
 const solutions = [

@@ -14,8 +14,8 @@ const plans = [
     icon: Zap,
     name: 'Starter',
     tagline: 'Solo practitioners & small clinics',
-    price: 'Contact for pricing',
-    priceNote: 'per month',
+    price: '₹2,999',
+    priceNote: 'per month · 14-day free trial included',
     highlight: false,
     features: [
       { label: 'AI calls per month', value: '500' },

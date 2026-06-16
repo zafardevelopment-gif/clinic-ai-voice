@@ -4,10 +4,23 @@ import { ArrowRight } from 'lucide-react'
 import CtaSection from '@/components/public/home/CtaSection'
 
 export const metadata: Metadata = {
-  title: 'FAQ — MediVoice AI',
+  title: 'FAQ — AI Receptionist Pricing, Setup & Language Support | MediVoice AI',
   description:
-    'Frequently asked questions about MediVoice AI — how it works, pricing, language support, data security, integrations, and setup process for clinics and hospitals.',
+    'Frequently asked questions about MediVoice AI — how AI appointment booking works, pricing from ₹2,999/month, Hindi/Tamil/Telugu language support, data security, integrations, and 48-hour setup for clinics.',
+  keywords: [
+    'MediVoice AI FAQ',
+    'AI receptionist pricing India',
+    'AI appointment booking setup',
+    'clinic AI language support Hindi Tamil',
+    'AI clinic software data security',
+    'how does AI receptionist work',
+  ],
   alternates: { canonical: 'https://medivoice.ai/faq' },
+  openGraph: {
+    title: 'MediVoice AI FAQ — Pricing, Setup & Features Explained',
+    description: 'Everything you need to know about AI appointment booking for Indian clinics — pricing, languages, security, and setup.',
+    url: 'https://medivoice.ai/faq',
+  },
 }
 
 const faqCategories = [

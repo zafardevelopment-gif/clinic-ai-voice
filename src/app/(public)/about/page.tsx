@@ -4,10 +4,22 @@ import { ArrowRight, Target, Heart, Zap, Shield } from 'lucide-react'
 import CtaSection from '@/components/public/home/CtaSection'
 
 export const metadata: Metadata = {
-  title: 'About Us — MediVoice AI',
+  title: 'About MediVoice AI — Built for Indian Clinics & Hospitals',
   description:
-    'Learn about MediVoice AI — our mission to make quality healthcare accessible by removing communication barriers for clinics and hospitals across India.',
+    'Learn about MediVoice AI — an Indian healthcare AI company on a mission to make quality care accessible by automating clinic reception with multilingual voice AI.',
+  keywords: [
+    'MediVoice AI company',
+    'Indian healthcare AI startup',
+    'clinic automation India team',
+    'AI voice agent healthcare India',
+    'about MediVoice AI',
+  ],
   alternates: { canonical: 'https://medivoice.ai/about' },
+  openGraph: {
+    title: 'About MediVoice AI — Indian Healthcare AI Company',
+    description: 'We build AI receptionists for Indian clinics and hospitals — multilingual, 24/7, and ready in 48 hours.',
+    url: 'https://medivoice.ai/about',
+  },
 }
 
 const values = [

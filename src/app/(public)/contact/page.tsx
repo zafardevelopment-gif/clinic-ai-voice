@@ -2,9 +2,21 @@ import type { Metadata } from 'next'
 import { Mail, Phone, MapPin, Clock, MessageSquare } from 'lucide-react'
 
 export const metadata: Metadata = {
-  title: 'Contact Us — MediVoice AI',
-  description: 'Get in touch with the MediVoice AI team. We respond within 24 hours. Reach us by email, phone, or fill out our contact form.',
+  title: 'Contact MediVoice AI — Get a Free Demo for Your Clinic',
+  description: 'Contact the MediVoice AI team to book a free 15-minute demo, ask about pricing, or get started with AI appointment booking for your clinic. We respond within 24 hours.',
+  keywords: [
+    'contact MediVoice AI',
+    'book free clinic AI demo',
+    'AI receptionist demo India',
+    'MediVoice AI support',
+    'clinic automation enquiry India',
+  ],
   alternates: { canonical: 'https://medivoice.ai/contact' },
+  openGraph: {
+    title: 'Contact MediVoice AI — Free Demo for Your Clinic',
+    description: 'Book a free 15-minute demo or ask us anything. We respond within 24 hours.',
+    url: 'https://medivoice.ai/contact',
+  },
 }
 
 export default function ContactPage() {

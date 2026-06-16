@@ -8,10 +8,23 @@ import {
 import CtaSection from '@/components/public/home/CtaSection'
 
 export const metadata: Metadata = {
-  title: 'Features — MediVoice AI',
+  title: 'Features — AI Appointment Booking, Multi-Language Support & More | MediVoice AI',
   description:
-    'Explore all 16+ features of MediVoice AI: AI appointment booking, rescheduling, multi-language support, emergency escalation, analytics, and more for clinics and hospitals.',
+    'Explore all 16+ features of MediVoice AI: AI appointment booking, rescheduling, multilingual support in Hindi/Tamil/Telugu, emergency escalation, analytics, and more for Indian clinics and hospitals.',
+  keywords: [
+    'AI appointment booking software',
+    'clinic call automation features',
+    'multilingual AI receptionist',
+    'automated appointment scheduling India',
+    'AI voice agent features healthcare',
+    'clinic management automation',
+  ],
   alternates: { canonical: 'https://medivoice.ai/features' },
+  openGraph: {
+    title: 'MediVoice AI Features — 16+ Tools for Clinic Automation',
+    description: 'AI appointment booking, multilingual support, emergency escalation, analytics and more — purpose-built for Indian clinics.',
+    url: 'https://medivoice.ai/features',
+  },
 }
 
 const categories = [

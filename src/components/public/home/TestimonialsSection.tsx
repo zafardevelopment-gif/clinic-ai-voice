@@ -1,11 +1,19 @@
+import Image from 'next/image'
 import { Star, Quote } from 'lucide-react'
 
+/**
+ * Testimonials data.
+ * TODO: Add real doctor photos — set `photo` to the image URL or path in /public/
+ * Example: photo: '/testimonials/dr-rajesh-menon.jpg'
+ * If photo is not set, the avatar initials will be shown as a fallback.
+ */
 const testimonials = [
   {
     name: 'Dr. Rajesh Menon',
     title: 'Owner, Menon Dental Clinic',
     location: 'Bengaluru, Karnataka',
     avatar: 'RM',
+    photo: '', // TODO: Add doctor photo URL
     rating: 5,
     text:
       'Before MediVoice AI, we were missing 30–40 calls a day during OPD hours. Now our AI handles all incoming calls, books appointments, and even reminds patients the day before. Our no-show rate dropped from 22% to under 8% in the first month.',
@@ -16,6 +24,7 @@ const testimonials = [
     title: 'MD, Sundaram Family Medicine',
     location: 'Chennai, Tamil Nadu',
     avatar: 'PS',
+    photo: '', // TODO: Add doctor photo URL
     rating: 5,
     text:
       'Our receptionist used to spend 4 hours a day just on calls. Now MediVoice handles all that in Tamil and English. My staff can focus on patients at the desk. The ROI was clear within the first 2 weeks.',
@@ -26,6 +35,7 @@ const testimonials = [
     title: 'COO, HealthFirst Hospital Group',
     location: 'Delhi NCR',
     avatar: 'VA',
+    photo: '', // TODO: Add photo URL
     rating: 5,
     text:
       'We deployed MediVoice across 7 clinics simultaneously. The multi-clinic admin dashboard is excellent — I can see call analytics, appointment trends, and AI performance for every location from one screen. Truly enterprise-grade.',
@@ -36,6 +46,7 @@ const testimonials = [
     title: 'Director, Reddy Orthopaedic Centre',
     location: 'Hyderabad, Telangana',
     avatar: 'KR',
+    photo: '', // TODO: Add photo URL
     rating: 5,
     text:
       'Patients love that they can book appointments at midnight without waiting. The AI handles Telugu and Hindi perfectly. We have seen a 31% increase in bookings just from after-hours calls that we were previously missing.',
@@ -46,6 +57,7 @@ const testimonials = [
     title: 'Founder, Kulkarni ENT Clinic',
     location: 'Pune, Maharashtra',
     avatar: 'AK',
+    photo: '', // TODO: Add photo URL
     rating: 5,
     text:
       'The setup was done in under 48 hours. The MediVoice team configured the AI for our specific specialization — ENT-related queries, doctor schedules, everything. It feels like a trained receptionist, not a robot.',
@@ -56,6 +68,7 @@ const testimonials = [
     title: 'Practice Manager, Joshi Paediatrics',
     location: 'Mumbai, Maharashtra',
     avatar: 'SJ',
+    photo: '', // TODO: Add photo URL
     rating: 5,
     text:
       'We have a lot of anxious parents calling at odd hours. MediVoice AI answers calmly, gives the right information, and books follow-up appointments. The emergency escalation feature alone is worth every rupee.',
@@ -85,9 +98,20 @@ export default function TestimonialsSection() {
             >
               <div className="flex items-start justify-between mb-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-emerald-500 flex items-center justify-center text-white text-sm font-semibold flex-shrink-0">
-                    {t.avatar}
-                  </div>
+                  {/* Shows real photo if set, otherwise falls back to initials */}
+                  {t.photo ? (
+                    <Image
+                      src={t.photo}
+                      alt={t.name}
+                      width={40}
+                      height={40}
+                      className="w-10 h-10 rounded-full object-cover flex-shrink-0 border-2 border-emerald-100"
+                    />
+                  ) : (
+                    <div className="w-10 h-10 rounded-full bg-emerald-500 flex items-center justify-center text-white text-sm font-semibold flex-shrink-0">
+                      {t.avatar}
+                    </div>
+                  )}
                   <div>
                     <p className="font-semibold text-sm text-[#0f1f17]">{t.name}</p>
                     <p className="text-xs text-[#7a8d83]">{t.title}</p>

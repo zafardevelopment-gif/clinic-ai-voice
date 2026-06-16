@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { ArrowRight, Play, Phone, Calendar, MessageSquare, CheckCircle2, Star } from 'lucide-react'
+import { ArrowRight, Play, Phone, Calendar, MessageSquare, CheckCircle2, Star, Clock } from 'lucide-react'
 
 export default function HeroSection() {
   return (
@@ -16,26 +16,33 @@ export default function HeroSection() {
         <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
           {/* Left: Copy */}
           <div className="max-w-xl">
-            {/* Badge */}
-            <div className="inline-flex items-center gap-2 bg-emerald-50 border border-emerald-100 rounded-full px-4 py-1.5 mb-6">
+            {/* Urgency badge */}
+            <div className="inline-flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-full px-4 py-1.5 mb-3">
+              <Clock className="w-3.5 h-3.5 text-amber-600" />
+              <span className="text-sm font-medium text-amber-700">Limited slots — Free trial closing soon</span>
+            </div>
+
+            {/* Language badge */}
+            <div className="inline-flex items-center gap-2 bg-emerald-50 border border-emerald-100 rounded-full px-4 py-1.5 mb-6 ml-2">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               <span className="text-sm font-medium text-emerald-700">Now live in 10+ Indian languages</span>
             </div>
 
+            {/* SEO-optimised H1 */}
             <h1 className="font-syne font-bold text-4xl sm:text-5xl lg:text-5xl xl:text-6xl leading-[1.1] text-[#0f1f17] mb-6">
-              Never Miss a{' '}
+              AI Receptionist for{' '}
               <span className="text-emerald-500 relative">
-                Patient Call
+                Indian Clinics
                 <svg className="absolute -bottom-1 left-0 w-full" viewBox="0 0 300 12" fill="none">
                   <path d="M2 8C50 3 150 1 298 8" stroke="#10b981" strokeWidth="3" strokeLinecap="round" />
                 </svg>
               </span>{' '}
-              Again.
+              — 24/7, Multilingual, Ready in 48 Hours
             </h1>
 
             <p className="text-lg text-[#4b5d54] leading-relaxed mb-8">
-              MediVoice AI is your clinic&apos;s 24/7 AI receptionist. It books appointments, answers patient questions,
-              sends reminders, and handles calls — in Hindi, English, and regional languages.
+              MediVoice AI answers every patient call, books appointments in Hindi, English, Tamil &amp; 7 more
+              languages, and sends reminders — so your staff can focus on patients, not phones.
             </p>
 
             {/* Trust signals */}
@@ -54,15 +61,28 @@ export default function HeroSection() {
                 href="/request-demo"
                 className="inline-flex items-center justify-center gap-2 px-6 py-3.5 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-xl transition-all shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/30 hover:-translate-y-0.5"
               >
-                Book a Free Demo
+                Book Free Demo — See It Live in 15 Min
                 <ArrowRight className="w-4 h-4" />
               </Link>
-              <button className="inline-flex items-center justify-center gap-2 px-6 py-3.5 bg-white border border-[#e4ebe7] hover:border-emerald-200 hover:bg-emerald-50/50 text-[#0f1f17] font-semibold rounded-xl transition-all">
+              {/* TODO: Replace href with your actual YouTube/Loom demo video URL */}
+              <a
+                href="https://www.youtube.com/watch?v=REPLACE_WITH_DEMO_VIDEO_ID"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center gap-2 px-6 py-3.5 bg-white border border-[#e4ebe7] hover:border-emerald-200 hover:bg-emerald-50/50 text-[#0f1f17] font-semibold rounded-xl transition-all"
+              >
                 <div className="w-7 h-7 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0">
                   <Play className="w-3 h-3 text-white fill-white ml-0.5" />
                 </div>
                 Watch 2-min Demo
-              </button>
+              </a>
+            </div>
+
+            {/* Secondary CTA */}
+            <div className="mb-6">
+              <Link href="/pricing" className="text-sm text-emerald-600 hover:text-emerald-700 font-medium underline underline-offset-2">
+                View pricing plans →
+              </Link>
             </div>
 
             {/* Social proof */}

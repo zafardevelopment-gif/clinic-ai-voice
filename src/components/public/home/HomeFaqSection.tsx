@@ -32,7 +32,17 @@ const faqs = [
 ]
 
 export default function HomeFaqSection() {
-  const [open, setOpen] = useState<number | null>(0)
+  // Top 3 FAQs open by default for better UX and SEO crawlability
+  const [openItems, setOpenItems] = useState<Set<number>>(new Set([0, 1, 2]))
+
+  const toggle = (i: number) => {
+    setOpenItems((prev) => {
+      const next = new Set(prev)
+      if (next.has(i)) next.delete(i)
+      else next.add(i)
+      return next
+    })
+  }
 
   return (
     <section className="py-20 lg:py-28 bg-[#f6faf8]">
@@ -54,17 +64,17 @@ export default function HomeFaqSection() {
               className="bg-white rounded-2xl border border-[#e4ebe7] overflow-hidden"
             >
               <button
-                onClick={() => setOpen(open === i ? null : i)}
+                onClick={() => toggle(i)}
                 className="w-full flex items-center justify-between px-6 py-5 text-left"
               >
                 <span className="font-semibold text-[#0f1f17] pr-4">{faq.q}</span>
                 <ChevronDown
                   className={`w-5 h-5 text-[#7a8d83] flex-shrink-0 transition-transform ${
-                    open === i ? 'rotate-180 text-emerald-500' : ''
+                    openItems.has(i) ? 'rotate-180 text-emerald-500' : ''
                   }`}
                 />
               </button>
-              {open === i && (
+              {openItems.has(i) && (
                 <div className="px-6 pb-5">
                   <p className="text-[#4b5d54] text-sm leading-relaxed">{faq.a}</p>
                 </div>
