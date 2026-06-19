@@ -37,15 +37,7 @@ export default async function ClinicPublicLayout({ children, params }: { childre
     .single()
 
   if (!clinic || !clinic.is_active || !clinic.website_enabled) {
-    // DEBUG — remove after fix
-    return (
-      <html><body style={{ color: '#fff', background: '#111', padding: 40, fontFamily: 'monospace' }}>
-        <h2>Debug: clinic not found or disabled</h2>
-        <p>slug: {slug}</p>
-        <p>error: {error?.message || 'none'}</p>
-        <pre>{JSON.stringify(clinic, null, 2)}</pre>
-      </body></html>
-    )
+    notFound()
   }
 
   const themeColor = clinic.theme_color || '#10b981'
