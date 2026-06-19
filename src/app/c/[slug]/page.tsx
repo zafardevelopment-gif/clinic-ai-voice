@@ -3,11 +3,11 @@ import { getDb } from '@/lib/db'
 import ClinicSiteClient from '@/components/clinic-site/ClinicSiteClient'
 
 interface PageProps {
-  params: Promise<{ slug: string }>
+  params: { slug: string }
 }
 
 export default async function ClinicPublicPage({ params }: PageProps) {
-  const { slug } = await params
+  const { slug } = params
   const db = getDb()
 
   const { data: clinic } = await db

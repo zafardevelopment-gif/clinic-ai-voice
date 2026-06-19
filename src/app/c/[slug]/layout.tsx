@@ -3,8 +3,8 @@ import { getDb } from '@/lib/db'
 import type { Metadata } from 'next'
 
 
-export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
-  const { slug } = await params
+export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
+  const { slug } = params
   const db = getDb()
   const { data: clinic } = await db
     .from('clinics')
@@ -27,8 +27,8 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   }
 }
 
-export default async function ClinicPublicLayout({ children, params }: { children: React.ReactNode; params: Promise<{ slug: string }> }) {
-  const { slug } = await params
+export default async function ClinicPublicLayout({ children, params }: { children: React.ReactNode; params: { slug: string } }) {
+  const { slug } = params
   const db = getDb()
   const { data: clinic } = await db
     .from('clinics')
