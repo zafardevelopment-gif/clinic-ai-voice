@@ -3,10 +3,11 @@ import { getDb } from '@/lib/db'
 import ClinicSiteClient from '@/components/clinic-site/ClinicSiteClient'
 
 interface PageProps {
-  params: { slug: string }
+  params: Promise<{ slug: string }>
 }
 
 export default async function ClinicPublicPage({ params }: PageProps) {
+  const { slug } = await params
   const db = getDb()
 
   const { data: clinic } = await db
@@ -16,7 +17,7 @@ export default async function ClinicPublicPage({ params }: PageProps) {
       'phone, email, address, city, country, ' +
       'social_facebook, social_instagram, social_whatsapp'
     )
-    .eq('slug', params.slug)
+    .eq('slug', slug)
     .eq('website_enabled', true)
     .eq('is_active', true)
     .single()

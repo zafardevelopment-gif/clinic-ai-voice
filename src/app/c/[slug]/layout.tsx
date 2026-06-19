@@ -2,17 +2,14 @@ import { notFound } from 'next/navigation'
 import { getDb } from '@/lib/db'
 import type { Metadata } from 'next'
 
-interface ClinicLayoutProps {
-  children: React.ReactNode
-  params: { slug: string }
-}
 
-export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const { slug } = await params
   const db = getDb()
   const { data: clinic } = await db
     .from('clinics')
     .select('name, tagline, logo_url')
-    .eq('slug', params.slug)
+    .eq('slug', slug)
     .eq('website_enabled', true)
     .eq('is_active', true)
     .single()
@@ -30,12 +27,13 @@ export async function generateMetadata({ params }: { params: { slug: string } })
   }
 }
 
-export default async function ClinicPublicLayout({ children, params }: ClinicLayoutProps) {
+export default async function ClinicPublicLayout({ children, params }: { children: React.ReactNode; params: Promise<{ slug: string }> }) {
+  const { slug } = await params
   const db = getDb()
   const { data: clinic } = await db
     .from('clinics')
     .select('id, website_enabled, is_active, theme_color')
-    .eq('slug', params.slug)
+    .eq('slug', slug)
     .single()
 
   if (!clinic || !clinic.is_active || !clinic.website_enabled) {
