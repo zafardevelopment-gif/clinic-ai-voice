@@ -47,6 +47,7 @@ export async function POST(req: NextRequest) {
       qualifications: body.qualifications || null,
       consultation_fee: body.consultation_fee ?? null,
       languages_spoken: body.languages_spoken || null,
+      avatar_url: body.avatar_url || null,
       clinic_id: clinicId,
     })
     .select(DOCTOR_SELECT)

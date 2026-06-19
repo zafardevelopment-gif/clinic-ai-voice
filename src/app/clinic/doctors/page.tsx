@@ -17,7 +17,7 @@ const EMPTY_FORM = {
   full_name: '', specialization: '', phone: '', email: '', bio: '',
   department_id: '', booking_min_hours: 2, booking_max_days: 30,
   slot_duration_minutes: 30, years_of_experience: '', qualifications: '',
-  consultation_fee: '', languages_spoken: '',
+  consultation_fee: '', languages_spoken: '', avatar_url: '',
 }
 
 export default function DoctorsPage() {
@@ -57,6 +57,7 @@ export default function DoctorsPage() {
       qualifications: doc.qualifications || '',
       consultation_fee: doc.consultation_fee != null ? String(doc.consultation_fee) : '',
       languages_spoken: doc.languages_spoken ? doc.languages_spoken.join(', ') : '',
+      avatar_url: doc.avatar_url || '',
     })
     setEditId(doc.id)
     setSaveError('')
@@ -81,6 +82,7 @@ export default function DoctorsPage() {
       qualifications: form.qualifications || null,
       consultation_fee: form.consultation_fee ? Number(form.consultation_fee) : null,
       languages_spoken: form.languages_spoken ? form.languages_spoken.split(',').map(s => s.trim()).filter(Boolean) : null,
+      avatar_url: form.avatar_url || null,
     }
     try {
       if (editId) {
@@ -249,6 +251,27 @@ export default function DoctorsPage() {
           <div className="col-span-2">
             <FormField label="Languages Spoken (comma separated)">
               <AppInput value={form.languages_spoken} onChange={e => f('languages_spoken', e.target.value)} placeholder="Urdu, English, Hindi" />
+            </FormField>
+          </div>
+          <div className="col-span-2">
+            <FormField label="Photo URL" hint="Paste a direct image link (e.g. from Google Drive, Cloudinary, etc.)">
+              <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                <div style={{ flex: 1 }}>
+                  <AppInput
+                    value={form.avatar_url}
+                    onChange={e => f('avatar_url', e.target.value)}
+                    placeholder="https://example.com/doctor-photo.jpg"
+                  />
+                </div>
+                {form.avatar_url && (
+                  <img
+                    src={form.avatar_url}
+                    alt="Preview"
+                    style={{ width: 56, height: 56, borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--b1)', flexShrink: 0 }}
+                    onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+                  />
+                )}
+              </div>
             </FormField>
           </div>
           <div className="col-span-2">
