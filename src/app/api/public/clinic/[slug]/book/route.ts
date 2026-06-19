@@ -67,12 +67,38 @@ export async function POST(
     return NextResponse.json({ error: 'This slot is already booked. Please choose another time.' }, { status: 409 })
   }
 
+  // Find existing patient by phone, or create new one
+  let patientId: string | null = null
+  const { data: existingPatient } = await db
+    .from('patients')
+    .select('id')
+    .eq('clinic_id', clinic.id)
+    .eq('phone', patient_phone.trim())
+    .maybeSingle()
+
+  if (existingPatient) {
+    patientId = existingPatient.id
+  } else {
+    const { data: newPatient } = await db
+      .from('patients')
+      .insert({
+        clinic_id: clinic.id,
+        full_name: patient_name.trim(),
+        phone: patient_phone.trim(),
+        email: body.patient_email || null,
+      })
+      .select('id')
+      .single()
+    if (newPatient) patientId = newPatient.id
+  }
+
   // Create appointment
   const { data: appointment, error } = await db
     .from('appointments')
     .insert({
       clinic_id: clinic.id,
       doctor_id: doctor_id,
+      patient_id: patientId,
       appointment_date,
       appointment_time,
       patient_name: patient_name.trim(),
