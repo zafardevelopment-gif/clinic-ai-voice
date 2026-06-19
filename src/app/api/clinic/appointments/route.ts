@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { getSession } from '@/lib/session'
 
-const APPT_SELECT = 'id, appointment_date, appointment_time, status, reason, booked_via, patients(full_name), doctors(full_name, specialization)'
+const APPT_SELECT = 'id, appointment_date, appointment_time, status, reason, booked_via, patient_name, patient_phone, patients(full_name), doctors(full_name, specialization)'
 
 export async function GET() {
   const session = await getSession()

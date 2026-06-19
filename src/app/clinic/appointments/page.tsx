@@ -15,6 +15,8 @@ interface AppointmentRow {
   status: string
   reason: string | null
   booked_via: string
+  patient_name: string | null
+  patient_phone: string | null
   patients: { full_name: string } | null
   doctors: { full_name: string; specialization: string | null } | null
 }
@@ -165,7 +167,8 @@ export default function AppointmentsPage() {
               {filtered.map((appt, i) => (
                 <tr key={appt.id} className="group">
                   <td className="px-4 py-3 group-hover:bg-[rgba(16,185,129,0.05)]" style={{ borderBottom: i < filtered.length - 1 ? '1px solid rgba(228,235,231,1)' : 'none' }}>
-                    <div className="text-sm font-semibold" style={{ color: 'var(--txt)' }}>{appt.patients?.full_name || '—'}</div>
+                    <div className="text-sm font-semibold" style={{ color: 'var(--txt)' }}>{appt.patients?.full_name || appt.patient_name || '—'}</div>
+                    {appt.patient_phone && !appt.patients && <div className="text-[11px]" style={{ color: 'var(--txt3)' }}>{appt.patient_phone}</div>}
                   </td>
                   <td className="px-4 py-3 text-[12px] group-hover:bg-[rgba(16,185,129,0.05)]" style={{ borderBottom: i < filtered.length - 1 ? '1px solid rgba(228,235,231,1)' : 'none', color: 'var(--txt2)' }}>
                     <div>{appt.doctors?.full_name || '—'}</div>
