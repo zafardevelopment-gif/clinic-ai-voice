@@ -11,7 +11,7 @@ export async function updateSession(request: NextRequest) {
     '/', '/features', '/pricing', '/solutions', '/about', '/contact',
     '/faq', '/privacy', '/terms', '/request-demo',
   ]
-  const isPublicMarketing = publicPaths.includes(path) || path.startsWith('/blog')
+  const isPublicMarketing = publicPaths.includes(path) || path.startsWith('/blog') || path.startsWith('/c/')
 
   // Login page — redirect to dashboard if already logged in
   if (path === '/login') {
