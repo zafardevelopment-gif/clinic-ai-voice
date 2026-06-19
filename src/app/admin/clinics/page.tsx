@@ -11,7 +11,7 @@ export default async function ClinicsPage() {
 
   const { data: rawClinics } = await supabase
     .from('clinics')
-    .select('id, name, phone, email, city, is_active, created_at')
+    .select('id, name, phone, email, city, is_active, website_enabled, created_at')
     .order('created_at', { ascending: false })
   const clinics = rawClinics ?? []
 
@@ -35,7 +35,7 @@ export default async function ClinicsPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr>
-                {['Clinic', 'City', 'Phone', 'Status', 'Actions'].map(h => (
+                {['Clinic', 'City', 'Phone', 'Status', 'Website', 'Actions'].map(h => (
                   <th key={h} className="text-left text-[11px] uppercase tracking-[1.2px] px-4 py-2.5 font-semibold"
                     style={{ color: 'var(--txt3)', borderBottom: '1px solid var(--b1)', background: 'var(--s1)' }}>
                     {h}
@@ -65,6 +65,17 @@ export default async function ClinicsPage() {
                   </td>
                   <td className="px-4 py-3 group-hover:bg-[rgba(16,185,129,0.05)]"
                     style={{ borderBottom: i < clinics.length - 1 ? '1px solid rgba(228,235,231,1)' : 'none' }}>
+                    <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full"
+                      style={{
+                        background: (clinic as Record<string, unknown>).website_enabled ? 'rgba(16,185,129,0.12)' : 'var(--s3)',
+                        color: (clinic as Record<string, unknown>).website_enabled ? 'var(--teal)' : 'var(--txt3)',
+                      }}>
+                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor', display: 'inline-block' }} />
+                      {(clinic as Record<string, unknown>).website_enabled ? 'Live' : 'Disabled'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 group-hover:bg-[rgba(16,185,129,0.05)]"
+                    style={{ borderBottom: i < clinics.length - 1 ? '1px solid rgba(228,235,231,1)' : 'none' }}>
                     <div className="flex gap-2">
                       <Link href={`/admin/clinics/${clinic.id}`}>
                         <button className="h-8 px-3 rounded-lg text-xs font-semibold"
@@ -84,7 +95,7 @@ export default async function ClinicsPage() {
               ))}
               {clinics.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-16 text-center">
+                  <td colSpan={6} className="px-4 py-16 text-center">
                     <div className="text-4xl mb-3 opacity-40">🏥</div>
                     <p className="text-sm" style={{ color: 'var(--txt3)' }}>No clinics yet. Add your first clinic.</p>
                   </td>
