@@ -80,7 +80,7 @@ export async function POST(
       patient_email: body.patient_email || null,
       notes: body.notes || null,
       status: 'scheduled',
-      source: 'website',
+      booked_via: 'online',
     })
     .select('id')
     .single()
