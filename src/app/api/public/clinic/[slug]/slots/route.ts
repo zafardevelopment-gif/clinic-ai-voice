@@ -23,7 +23,6 @@ export async function GET(
     .from('clinics')
     .select('id')
     .eq('slug', slug)
-    .eq('website_enabled', true)
     .eq('is_active', true)
     .single()
 
