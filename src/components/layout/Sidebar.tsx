@@ -96,6 +96,12 @@ const clinicNav: NavSection[] = [
       { icon: '📈', label: 'Monthly Reports', href: '/clinic/reports' },
     ],
   },
+  {
+    label: 'Website',
+    items: [
+      { icon: '🌐', label: 'My Website', href: '/clinic/website' },
+    ],
+  },
 ]
 
 export default function Sidebar({ role, userName, clinicName }: SidebarProps) {
