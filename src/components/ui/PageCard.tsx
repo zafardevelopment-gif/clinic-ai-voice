@@ -9,7 +9,7 @@ interface PageCardProps {
 
 export default function PageCard({ title, subtitle, actions, children, noPad, className }: PageCardProps) {
   return (
-    <div className={`rounded-2xl overflow-hidden mb-4 ${className || ''}`}
+    <div className={`rounded-2xl mb-4 ${className || ''}`}
       style={{ background: 'var(--s2)', border: '1px solid var(--b1)' }}>
       {(title || actions) && (
         <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid var(--b1)' }}>
