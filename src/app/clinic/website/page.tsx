@@ -192,9 +192,9 @@ export default function WebsitePage() {
         <div className="flex-1 flex items-center justify-center p-8">
           <div className="text-center max-w-md">
             <div className="text-5xl mb-4">🌐</div>
-            <div className="text-lg font-bold mb-2" style={{ color: 'var(--txt)' }}>Website Enabled Nahi Hai</div>
+            <div className="text-lg font-bold mb-2" style={{ color: 'var(--txt)' }}>Website Not Enabled</div>
             <div className="text-sm" style={{ color: 'var(--txt3)' }}>
-              Aapki clinic ki public website abhi enable nahi hai. Admin se request karo ke website enable ki jaye.
+              Your clinic's public website has not been enabled yet. Please contact your admin to activate it.
             </div>
           </div>
         </div>
