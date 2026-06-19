@@ -30,14 +30,22 @@ export async function generateMetadata({ params }: { params: { slug: string } })
 export default async function ClinicPublicLayout({ children, params }: { children: React.ReactNode; params: { slug: string } }) {
   const { slug } = params
   const db = getDb()
-  const { data: clinic } = await db
+  const { data: clinic, error } = await db
     .from('clinics')
     .select('id, website_enabled, is_active, theme_color')
     .eq('slug', slug)
     .single()
 
   if (!clinic || !clinic.is_active || !clinic.website_enabled) {
-    notFound()
+    // DEBUG — remove after fix
+    return (
+      <html><body style={{ color: '#fff', background: '#111', padding: 40, fontFamily: 'monospace' }}>
+        <h2>Debug: clinic not found or disabled</h2>
+        <p>slug: {slug}</p>
+        <p>error: {error?.message || 'none'}</p>
+        <pre>{JSON.stringify(clinic, null, 2)}</pre>
+      </body></html>
+    )
   }
 
   const themeColor = clinic.theme_color || '#10b981'
