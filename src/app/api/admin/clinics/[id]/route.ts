@@ -50,6 +50,9 @@ export async function PATCH(
       city: body.city || null,
       country: body.country || null,
       is_active: body.is_active ?? true,
+      website_enabled: body.website_enabled ?? false,
+      website_url: body.website_url || null,
+      website_slug: body.website_slug || null,
     }
 
     const db = getDb()

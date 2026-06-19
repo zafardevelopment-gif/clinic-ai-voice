@@ -1,6 +1,7 @@
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
 
 export type UserRole = 'admin' | 'clinic_admin'
+export type MediaType = 'image' | 'video'
 export type CallType = 'booking' | 'query' | 'followup'
 export type CallOutcome = 'booked' | 'not_booked' | 'callback' | 'transferred'
 export type AppointmentStatus = 'scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'no_show'
@@ -64,6 +65,9 @@ export type Database = {
           twilio_number: string | null
           twilio_number_owner: 'platform' | 'clinic' | null
           twilio_number_sid: string | null
+          website_enabled: boolean
+          website_url: string | null
+          website_slug: string | null
           created_at: string
           updated_at: string
         }
@@ -82,6 +86,9 @@ export type Database = {
           twilio_number?: string | null
           twilio_number_owner?: 'platform' | 'clinic' | null
           twilio_number_sid?: string | null
+          website_enabled?: boolean
+          website_url?: string | null
+          website_slug?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -99,6 +106,9 @@ export type Database = {
           twilio_number?: string | null
           twilio_number_owner?: 'platform' | 'clinic' | null
           twilio_number_sid?: string | null
+          website_enabled?: boolean
+          website_url?: string | null
+          website_slug?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -312,6 +322,74 @@ export type Database = {
           { foreignKeyName: 'appointments_doctor_id_fkey'; columns: ['doctor_id']; referencedRelation: 'doctors'; referencedColumns: ['id'] }
         ]
       }
+      clinic_website_content: {
+        Row: {
+          id: string
+          clinic_id: string
+          hero_slides: Json
+          about_title: string | null
+          about_text: string | null
+          services: Json
+          contact_info: Json
+          seo_title: string | null
+          seo_description: string | null
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          clinic_id: string
+          hero_slides?: Json
+          about_title?: string | null
+          about_text?: string | null
+          services?: Json
+          contact_info?: Json
+          seo_title?: string | null
+          seo_description?: string | null
+          updated_at?: string
+        }
+        Update: {
+          hero_slides?: Json
+          about_title?: string | null
+          about_text?: string | null
+          services?: Json
+          contact_info?: Json
+          seo_title?: string | null
+          seo_description?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: 'clinic_website_content_clinic_id_fkey'; columns: ['clinic_id']; referencedRelation: 'clinics'; referencedColumns: ['id'] }
+        ]
+      }
+      clinic_gallery: {
+        Row: {
+          id: string
+          clinic_id: string
+          media_type: MediaType
+          url: string
+          caption: string | null
+          sort_order: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          clinic_id: string
+          media_type?: MediaType
+          url: string
+          caption?: string | null
+          sort_order?: number
+          created_at?: string
+        }
+        Update: {
+          media_type?: MediaType
+          url?: string
+          caption?: string | null
+          sort_order?: number
+        }
+        Relationships: [
+          { foreignKeyName: 'clinic_gallery_clinic_id_fkey'; columns: ['clinic_id']; referencedRelation: 'clinics'; referencedColumns: ['id'] }
+        ]
+      }
       voice_agent_config: {
         Row: {
           id: string
@@ -438,6 +516,7 @@ export type Database = {
       call_outcome: CallOutcome
       appointment_status: AppointmentStatus
       speaker_type: SpeakerType
+      media_type: MediaType
     }
     CompositeTypes: {
       [_ in never]: never
@@ -456,3 +535,30 @@ export type Appointment = Database['public']['Tables']['appointments']['Row']
 export type VoiceAgentConfig = Database['public']['Tables']['voice_agent_config']['Row']
 export type Call = Database['public']['Tables']['calls']['Row']
 export type Conversation = Database['public']['Tables']['conversations']['Row']
+export type ClinicWebsiteContent = Database['public']['Tables']['clinic_website_content']['Row']
+export type ClinicGallery = Database['public']['Tables']['clinic_gallery']['Row']
+
+export interface HeroSlide {
+  id: string
+  type: 'image' | 'video'
+  url: string
+  title: string
+  subtitle: string
+  cta_text: string
+  cta_link: string
+}
+
+export interface WebsiteService {
+  id: string
+  icon: string
+  title: string
+  description: string
+}
+
+export interface WebsiteContactInfo {
+  phone: string
+  email: string
+  address: string
+  working_hours: string
+  map_embed_url: string
+}
