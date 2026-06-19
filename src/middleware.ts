@@ -6,6 +6,7 @@ const PLATFORM_DOMAINS = [
   'medivoice.ai',
   'www.medivoice.ai',
   'localhost',
+  'clinicvoice.aivexallp.com',
   // Add your Vercel preview URLs here if needed
 ]
 
