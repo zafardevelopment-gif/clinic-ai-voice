@@ -159,14 +159,15 @@ export default function WebsitePage() {
 
         {/* ── Enable / Preview ── */}
         <PageCard title="Website Status">
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
-            <div>
-              <p className="text-sm" style={{ color: 'var(--txt2)', marginBottom: 8 }}>
-                Your public website URL:
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 24, minHeight: 56 }}>
+            {/* URL side */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--txt3)' }}>
+                Your Public Website URL
               </p>
               {websiteUrl ? (
                 <a href={websiteUrl} target="_blank" rel="noopener noreferrer"
-                  style={{ color: 'var(--acc)', fontWeight: 600, fontSize: 14 }}>
+                  style={{ color: 'var(--acc)', fontWeight: 600, fontSize: 14, wordBreak: 'break-all' }}>
                   {websiteUrl}
                 </a>
               ) : (
@@ -178,25 +179,31 @@ export default function WebsitePage() {
                 </p>
               )}
             </div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
-              <span className="text-sm font-semibold" style={{ color: 'var(--txt)' }}>
-                {settings.website_enabled ? 'Website is Live' : 'Website is Hidden'}
+
+            {/* Toggle side */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+              <span className="text-sm font-semibold" style={{ color: settings.website_enabled ? 'var(--acc)' : 'var(--txt3)' }}>
+                {settings.website_enabled ? 'Live' : 'Hidden'}
               </span>
               <div
+                role="switch"
+                aria-checked={settings.website_enabled}
                 onClick={() => setSettings(p => ({ ...p, website_enabled: !p.website_enabled }))}
                 style={{
-                  width: 44, height: 24, borderRadius: 100, cursor: 'pointer',
+                  width: 48, height: 28, borderRadius: 100, cursor: 'pointer',
                   background: settings.website_enabled ? 'var(--acc)' : 'var(--b2)',
-                  position: 'relative', transition: 'background 0.2s',
+                  position: 'relative', transition: 'background 0.2s', flexShrink: 0,
+                  border: '2px solid transparent',
+                  outline: 'none',
                 }}>
                 <div style={{
                   position: 'absolute', top: 3, width: 18, height: 18, borderRadius: '50%',
                   background: '#fff', transition: 'left 0.2s',
-                  left: settings.website_enabled ? 23 : 3,
-                  boxShadow: '0 1px 4px rgba(0,0,0,0.2)',
+                  left: settings.website_enabled ? 24 : 4,
+                  boxShadow: '0 1px 4px rgba(0,0,0,0.25)',
                 }} />
               </div>
-            </label>
+            </div>
           </div>
         </PageCard>
 
