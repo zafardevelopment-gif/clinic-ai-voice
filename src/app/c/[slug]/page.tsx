@@ -18,7 +18,6 @@ export default async function ClinicPublicPage({ params }: PageProps) {
       'social_facebook, social_instagram, social_whatsapp'
     )
     .eq('slug', slug)
-    .eq('website_enabled', true)
     .eq('is_active', true)
     .single()
 

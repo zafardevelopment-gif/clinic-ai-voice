@@ -36,7 +36,7 @@ export default async function ClinicPublicLayout({ children, params }: { childre
     .eq('slug', slug)
     .single()
 
-  if (!clinic || !clinic.is_active || !clinic.website_enabled) {
+  if (!clinic || !clinic.is_active) {
     notFound()
   }
 
