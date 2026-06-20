@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import BookingModal from './BookingModal'
 import type { HeroSlide, WebsiteService } from '@/types/database'
 
@@ -65,11 +65,21 @@ interface Props {
 
 export default function ClinicSiteClient({ clinic, websiteContent, gallery, doctors }: Props) {
   const [bookingDoctor, setBookingDoctor] = useState<Doctor | null>(null)
+  const [lightbox, setLightbox] = useState<GalleryItem | null>(null)
   const accent = '#10b981'
 
   const heroSlides: HeroSlide[] = websiteContent?.hero_slides || []
   const services: WebsiteService[] = websiteContent?.services || []
   const contactInfo = websiteContent?.contact_info || {}
+
+  const closeLightbox = useCallback(() => setLightbox(null), [])
+
+  // Close lightbox on ESC
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') closeLightbox() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [closeLightbox])
 
   function scrollTo(id: string) {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
@@ -78,6 +88,10 @@ export default function ClinicSiteClient({ clinic, websiteContent, gallery, doct
   const displayPhone = contactInfo.phone || clinic.phone
   const displayEmail = contactInfo.email || clinic.email
   const displayAddress = contactInfo.address || [clinic.address, clinic.city, clinic.country].filter(Boolean).join(', ')
+  const hasAbout = !!(websiteContent?.about_title || websiteContent?.about_text)
+  const maxExp = doctors.filter(d => d.years_of_experience).length > 0
+    ? Math.max(...doctors.map(d => d.years_of_experience || 0))
+    : null
 
   return (
     <div style={{ fontFamily: "'Figtree', sans-serif", background: '#f8fafb', minHeight: '100vh', color: '#1a2a22' }}>
@@ -100,31 +114,28 @@ export default function ClinicSiteClient({ clinic, websiteContent, gallery, doct
           )}
           <span style={{ fontWeight: 700, fontSize: 18, color: '#0f1f17' }}>{clinic.name}</span>
         </div>
-        <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
-          {services.length > 0 && (
-            <button onClick={() => scrollTo('services')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 500, color: '#4b5d54' }}>Services</button>
-          )}
-          <button onClick={() => scrollTo('doctors')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 500, color: '#4b5d54' }}>Our Doctors</button>
-          {(websiteContent?.about_title || websiteContent?.about_text) && (
-            <button onClick={() => scrollTo('about')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 500, color: '#4b5d54' }}>About</button>
-          )}
-          {gallery.length > 0 && (
-            <button onClick={() => scrollTo('gallery')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 500, color: '#4b5d54' }}>Gallery</button>
-          )}
-          <button onClick={() => scrollTo('contact')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 500, color: '#4b5d54' }}>Contact</button>
-          <button onClick={() => scrollTo('doctors')} style={{ background: accent, color: '#fff', border: 'none', cursor: 'pointer', padding: '8px 20px', borderRadius: 8, fontSize: 14, fontWeight: 600 }}>
+        <div style={{ display: 'flex', gap: 20, alignItems: 'center', flexWrap: 'wrap' }}>
+          {hasAbout && <NavBtn label="About" onClick={() => scrollTo('about')} />}
+          {services.length > 0 && <NavBtn label="Services" onClick={() => scrollTo('services')} />}
+          <NavBtn label="Our Doctors" onClick={() => scrollTo('doctors')} />
+          {gallery.length > 0 && <NavBtn label="Gallery" onClick={() => scrollTo('gallery')} />}
+          <NavBtn label="Contact" onClick={() => scrollTo('contact')} />
+          <button onClick={() => scrollTo('doctors')} style={{ background: accent, color: '#fff', border: 'none', cursor: 'pointer', padding: '9px 22px', borderRadius: 8, fontSize: 14, fontWeight: 600 }}>
             Book Appointment
           </button>
         </div>
       </nav>
 
-      {/* ── HERO SLIDER ── */}
+      {/* ── HERO ── */}
       {heroSlides.length > 0 ? (
         <HeroSlider slides={heroSlides} accent={accent} onBook={() => scrollTo('doctors')} />
       ) : (
-        <section style={{ padding: '80px 5% 60px', background: `linear-gradient(135deg, ${accent}12 0%, #ffffff 60%)`, textAlign: 'center' }}>
-          <h1 style={{ fontSize: 48, fontWeight: 800, lineHeight: 1.15, margin: '0 0 16px', color: '#0f1f17' }}>{clinic.name}</h1>
-          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap', marginTop: 24 }}>
+        <section style={{ padding: '90px 5% 70px', background: `linear-gradient(135deg, ${accent}10 0%, #ffffff 60%)`, textAlign: 'center' }}>
+          <div style={{ display: 'inline-block', padding: '6px 16px', borderRadius: 100, background: `${accent}18`, color: accent, fontSize: 13, fontWeight: 600, marginBottom: 20 }}>
+            Now accepting appointments online
+          </div>
+          <h1 style={{ fontSize: 52, fontWeight: 800, lineHeight: 1.1, margin: '0 0 16px', color: '#0f1f17' }}>{clinic.name}</h1>
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap', marginTop: 28 }}>
             <button onClick={() => scrollTo('doctors')} style={{ background: accent, color: '#fff', border: 'none', cursor: 'pointer', padding: '14px 32px', borderRadius: 10, fontSize: 16, fontWeight: 700 }}>
               Book an Appointment
             </button>
@@ -134,28 +145,68 @@ export default function ClinicSiteClient({ clinic, websiteContent, gallery, doct
               </a>
             )}
           </div>
-          {doctors.length > 0 && (
-            <div style={{ display: 'flex', gap: 32, justifyContent: 'center', marginTop: 48, flexWrap: 'wrap' }}>
-              <Stat value={doctors.length} label="Doctors" />
-              {doctors.filter(d => d.years_of_experience).length > 0 && (
-                <Stat value={Math.max(...doctors.map(d => d.years_of_experience || 0)) + '+'} label="Years Experience" />
+        </section>
+      )}
+
+      {/* ── STATS BAR ── */}
+      <div style={{ background: accent, padding: '28px 5%' }}>
+        <div style={{ display: 'flex', gap: 0, justifyContent: 'center', flexWrap: 'wrap', maxWidth: 900, margin: '0 auto' }}>
+          {doctors.length > 0 && <StatBar value={doctors.length} label="Expert Doctors" />}
+          {maxExp && <StatBar value={`${maxExp}+`} label="Years Experience" />}
+          <StatBar value="24/7" label="Online Booking" />
+          <StatBar value="100%" label="Patient Satisfaction" />
+        </div>
+      </div>
+
+      {/* ── ABOUT ── */}
+      {hasAbout && (
+        <section id="about" style={{ padding: '80px 5%', background: '#fff' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 64, alignItems: 'center', maxWidth: 1100, margin: '0 auto' }}>
+            <div>
+              <div style={{ display: 'inline-block', padding: '5px 14px', borderRadius: 100, background: `${accent}15`, color: accent, fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 16 }}>
+                About Us
+              </div>
+              <h2 style={{ fontSize: 38, fontWeight: 800, margin: '0 0 20px', color: '#0f1f17', lineHeight: 1.2 }}>
+                {websiteContent?.about_title || `About ${clinic.name}`}
+              </h2>
+              {websiteContent?.about_text && (
+                <p style={{ color: '#4b5d54', fontSize: 16, lineHeight: 1.85, margin: 0, whiteSpace: 'pre-line' }}>
+                  {websiteContent.about_text}
+                </p>
               )}
-              <Stat value="24/7" label="Appointment Booking" />
+              <button onClick={() => scrollTo('doctors')} style={{ marginTop: 28, background: accent, color: '#fff', border: 'none', cursor: 'pointer', padding: '13px 28px', borderRadius: 9, fontSize: 15, fontWeight: 700 }}>
+                Meet Our Doctors →
+              </button>
             </div>
-          )}
+            {/* Visual side */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              {[
+                { icon: '🏥', title: 'Modern Facility', desc: 'State-of-the-art equipment and clean environment' },
+                { icon: '👨‍⚕️', title: 'Expert Doctors', desc: 'Qualified and experienced medical professionals' },
+                { icon: '⏰', title: 'Flexible Hours', desc: 'Convenient appointment slots for your schedule' },
+                { icon: '💊', title: 'Quality Care', desc: 'Comprehensive treatment with personal attention' },
+              ].map(item => (
+                <div key={item.title} style={{ background: '#f8fafb', borderRadius: 14, padding: '20px 16px', border: '1px solid #e4ebe7' }}>
+                  <div style={{ fontSize: 28, marginBottom: 10 }}>{item.icon}</div>
+                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6, color: '#0f1f17' }}>{item.title}</div>
+                  <div style={{ fontSize: 12, color: '#7a8d83', lineHeight: 1.5 }}>{item.desc}</div>
+                </div>
+              ))}
+            </div>
+          </div>
         </section>
       )}
 
       {/* ── SERVICES ── */}
       {services.length > 0 && (
-        <section id="services" style={{ padding: '72px 5%', background: '#fff' }}>
+        <section id="services" style={{ padding: '80px 5%', background: '#f8fafb' }}>
           <SectionHeader accent={accent} tag="What We Offer" title="Our Services" />
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 20, marginTop: 40 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 20, marginTop: 44 }}>
             {services.map(svc => (
-              <div key={svc.id} style={{ background: '#f8fafb', borderRadius: 14, padding: '24px 20px', border: '1px solid #e4ebe7', textAlign: 'center' }}>
-                <div style={{ fontSize: 36, marginBottom: 12 }}>{svc.icon}</div>
+              <div key={svc.id} style={{ background: '#fff', borderRadius: 16, padding: '28px 20px', border: '1px solid #e4ebe7', textAlign: 'center', transition: 'box-shadow 0.2s' }}>
+                <div style={{ fontSize: 40, marginBottom: 14 }}>{svc.icon}</div>
                 <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8, color: '#0f1f17' }}>{svc.title}</div>
-                {svc.description && <div style={{ fontSize: 13, color: '#4b5d54', lineHeight: 1.6 }}>{svc.description}</div>}
+                {svc.description && <div style={{ fontSize: 13, color: '#4b5d54', lineHeight: 1.65 }}>{svc.description}</div>}
               </div>
             ))}
           </div>
@@ -163,12 +214,12 @@ export default function ClinicSiteClient({ clinic, websiteContent, gallery, doct
       )}
 
       {/* ── DOCTORS ── */}
-      <section id="doctors" style={{ padding: '72px 5%', background: services.length > 0 ? '#f8fafb' : '#fff' }}>
+      <section id="doctors" style={{ padding: '80px 5%', background: '#fff' }}>
         <SectionHeader accent={accent} tag="Our Team" title="Meet Our Doctors" />
         {doctors.length === 0 ? (
           <p style={{ textAlign: 'center', color: '#7a8d83', marginTop: 32 }}>Doctor information coming soon.</p>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 24, marginTop: 40 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 24, marginTop: 44 }}>
             {doctors.map(doc => (
               <DoctorCard key={doc.id} doctor={doc} accent={accent} onBook={() => setBookingDoctor(doc)} />
             ))}
@@ -176,29 +227,59 @@ export default function ClinicSiteClient({ clinic, websiteContent, gallery, doct
         )}
       </section>
 
-      {/* ── ABOUT ── */}
-      {(websiteContent?.about_title || websiteContent?.about_text) && (
-        <section id="about" style={{ padding: '72px 5%', background: '#fff' }}>
-          <SectionHeader accent={accent} tag="About Us" title={websiteContent.about_title || `About ${clinic.name}`} />
-          {websiteContent.about_text && (
-            <p style={{ color: '#4b5d54', fontSize: 16, lineHeight: 1.8, maxWidth: 760, margin: '24px auto 0', whiteSpace: 'pre-line' }}>
-              {websiteContent.about_text}
-            </p>
-          )}
-        </section>
-      )}
+      {/* ── WHY CHOOSE US ── */}
+      <section style={{ padding: '80px 5%', background: `linear-gradient(135deg, ${accent} 0%, #059669 100%)` }}>
+        <div style={{ textAlign: 'center', maxWidth: 760, margin: '0 auto' }}>
+          <h2 style={{ fontSize: 38, fontWeight: 800, color: '#fff', margin: '0 0 12px' }}>Why Choose {clinic.name}?</h2>
+          <p style={{ color: 'rgba(255,255,255,0.82)', fontSize: 16, marginBottom: 48 }}>
+            We are committed to providing the highest quality healthcare with compassion and expertise.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 24 }}>
+            {[
+              { icon: '🎯', title: 'Accurate Diagnosis', desc: 'Advanced diagnostic tools for precise results' },
+              { icon: '🤝', title: 'Patient First', desc: 'Every decision is made with your wellbeing in mind' },
+              { icon: '📱', title: 'Easy Booking', desc: 'Book appointments online anytime, anywhere' },
+              { icon: '🔒', title: 'Privacy Assured', desc: 'Your health records are safe and confidential' },
+            ].map(item => (
+              <div key={item.title} style={{ background: 'rgba(255,255,255,0.12)', borderRadius: 16, padding: '24px 18px', backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.2)' }}>
+                <div style={{ fontSize: 32, marginBottom: 12 }}>{item.icon}</div>
+                <div style={{ fontWeight: 700, fontSize: 15, color: '#fff', marginBottom: 8 }}>{item.title}</div>
+                <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.78)', lineHeight: 1.6 }}>{item.desc}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
 
       {/* ── GALLERY ── */}
       {gallery.length > 0 && (
-        <section id="gallery" style={{ padding: '72px 5%', background: '#f8fafb' }}>
+        <section id="gallery" style={{ padding: '80px 5%', background: '#f8fafb' }}>
           <SectionHeader accent={accent} tag="Gallery" title="Our Clinic" />
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 16, marginTop: 40 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 16, marginTop: 44 }}>
             {gallery.map(item => (
-              <div key={item.id} style={{ borderRadius: 14, overflow: 'hidden', border: '1px solid #e4ebe7', aspectRatio: '4/3', position: 'relative', background: '#e4ebe7' }}>
+              <div
+                key={item.id}
+                onClick={() => item.media_type === 'image' && setLightbox(item)}
+                style={{ borderRadius: 14, overflow: 'hidden', border: '1px solid #e4ebe7', aspectRatio: '4/3', position: 'relative', background: '#e4ebe7', cursor: item.media_type === 'image' ? 'zoom-in' : 'default' }}
+              >
                 {item.media_type === 'video' ? (
                   <video src={item.url} controls style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 ) : (
-                  <img src={item.url} alt={item.caption || ''} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  <>
+                    <img src={item.url} alt={item.caption || ''} style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.3s' }}
+                      onMouseOver={e => (e.currentTarget.style.transform = 'scale(1.05)')}
+                      onMouseOut={e => (e.currentTarget.style.transform = 'scale(1)')}
+                    />
+                    <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.2s' }}
+                      onMouseOver={e => (e.currentTarget.style.background = 'rgba(0,0,0,0.25)')}
+                      onMouseOut={e => (e.currentTarget.style.background = 'rgba(0,0,0,0)')}
+                    >
+                      <span style={{ color: '#fff', fontSize: 28, opacity: 0, transition: 'opacity 0.2s' }}
+                        onMouseOver={e => (e.currentTarget.style.opacity = '1')}
+                        onMouseOut={e => (e.currentTarget.style.opacity = '0')}
+                      >🔍</span>
+                    </div>
+                  </>
                 )}
                 {item.caption && (
                   <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '8px 12px', background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 12 }}>
@@ -211,13 +292,31 @@ export default function ClinicSiteClient({ clinic, websiteContent, gallery, doct
         </section>
       )}
 
+      {/* ── CTA BANNER ── */}
+      <section style={{ padding: '72px 5%', background: '#0f1f17', textAlign: 'center' }}>
+        <h2 style={{ fontSize: 38, fontWeight: 800, color: '#fff', margin: '0 0 12px' }}>Ready to Book Your Appointment?</h2>
+        <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: 16, marginBottom: 32 }}>
+          Our team is here to provide the best care for you and your family.
+        </p>
+        <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+          <button onClick={() => scrollTo('doctors')} style={{ background: accent, color: '#fff', border: 'none', cursor: 'pointer', padding: '15px 36px', borderRadius: 10, fontSize: 16, fontWeight: 700 }}>
+            Book Appointment Now
+          </button>
+          {displayPhone && (
+            <a href={`tel:${displayPhone}`} style={{ display: 'inline-block', background: 'transparent', color: '#fff', border: '2px solid rgba(255,255,255,0.3)', padding: '15px 36px', borderRadius: 10, fontSize: 16, fontWeight: 600, textDecoration: 'none' }}>
+              📞 Call Us
+            </a>
+          )}
+        </div>
+      </section>
+
       {/* ── CONTACT ── */}
-      <section id="contact" style={{ padding: '72px 5%', background: '#fff' }}>
+      <section id="contact" style={{ padding: '80px 5%', background: '#fff' }}>
         <SectionHeader accent={accent} tag="Contact" title="Visit Us" />
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 32, marginTop: 40, maxWidth: 900, margin: '40px auto 0' }}>
-          <div style={{ background: '#f8fafb', borderRadius: 16, padding: 32, border: '1px solid #e4ebe7' }}>
-            <h3 style={{ fontWeight: 700, marginBottom: 20, fontSize: 18 }}>Contact Information</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 32, marginTop: 44, maxWidth: 1000, margin: '44px auto 0' }}>
+          <div style={{ background: '#f8fafb', borderRadius: 16, padding: 36, border: '1px solid #e4ebe7' }}>
+            <h3 style={{ fontWeight: 700, marginBottom: 24, fontSize: 20, color: '#0f1f17' }}>Contact Information</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               {displayAddress && <ContactRow icon="📍" text={displayAddress} />}
               {displayPhone && <ContactRow icon="📞" text={displayPhone} href={`tel:${displayPhone}`} />}
               {displayEmail && <ContactRow icon="✉️" text={displayEmail} href={`mailto:${displayEmail}`} />}
@@ -225,20 +324,73 @@ export default function ClinicSiteClient({ clinic, websiteContent, gallery, doct
             </div>
           </div>
 
-          {contactInfo.map_embed_url && (
-            <div style={{ borderRadius: 16, overflow: 'hidden', border: '1px solid #e4ebe7', minHeight: 220 }}>
-              <iframe src={contactInfo.map_embed_url} width="100%" height="100%" style={{ border: 0, minHeight: 220 }} allowFullScreen loading="lazy" />
+          {contactInfo.map_embed_url ? (
+            <div style={{ borderRadius: 16, overflow: 'hidden', border: '1px solid #e4ebe7', minHeight: 260 }}>
+              <iframe src={contactInfo.map_embed_url} width="100%" height="100%" style={{ border: 0, minHeight: 260 }} allowFullScreen loading="lazy" />
+            </div>
+          ) : (
+            <div style={{ background: '#f8fafb', borderRadius: 16, padding: 36, border: '1px solid #e4ebe7', display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <h3 style={{ fontWeight: 700, marginBottom: 8, fontSize: 20, color: '#0f1f17' }}>Book an Appointment</h3>
+              <p style={{ color: '#4b5d54', fontSize: 14, margin: 0 }}>Choose a doctor and pick a time that works for you. Online booking available 24/7.</p>
+              <button onClick={() => scrollTo('doctors')} style={{ background: accent, color: '#fff', border: 'none', cursor: 'pointer', padding: '13px 24px', borderRadius: 9, fontSize: 15, fontWeight: 700, alignSelf: 'flex-start' }}>
+                View Doctors →
+              </button>
             </div>
           )}
         </div>
       </section>
 
       {/* ── FOOTER ── */}
-      <footer style={{ padding: '32px 5%', borderTop: '1px solid #e4ebe7', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, background: '#fff' }}>
-        <span style={{ color: '#7a8d83', fontSize: 13 }}>© {new Date().getFullYear()} {clinic.name}. All rights reserved.</span>
-        <span style={{ color: '#c3cdc7', fontSize: 12 }}>Powered by ClinicAI</span>
+      <footer style={{ padding: '32px 5%', borderTop: '1px solid #e4ebe7', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, background: '#0f1f17' }}>
+        <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13 }}>© {new Date().getFullYear()} {clinic.name}. All rights reserved.</span>
+        <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: 12 }}>Powered by ClinicAI</span>
       </footer>
 
+      {/* ── LIGHTBOX ── */}
+      {lightbox && (
+        <div
+          onClick={closeLightbox}
+          style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+        >
+          <button
+            onClick={closeLightbox}
+            style={{ position: 'absolute', top: 20, right: 24, background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 44, height: 44, borderRadius: '50%', cursor: 'pointer', fontSize: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          >
+            ✕
+          </button>
+          <div onClick={e => e.stopPropagation()} style={{ maxWidth: '90vw', maxHeight: '90vh', position: 'relative' }}>
+            <img
+              src={lightbox.url}
+              alt={lightbox.caption || ''}
+              style={{ maxWidth: '90vw', maxHeight: '85vh', borderRadius: 12, objectFit: 'contain', display: 'block' }}
+            />
+            {lightbox.caption && (
+              <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.75)', fontSize: 14, marginTop: 12 }}>
+                {lightbox.caption}
+              </div>
+            )}
+          </div>
+          {/* Navigate between images */}
+          {gallery.filter(g => g.media_type === 'image').length > 1 && (() => {
+            const images = gallery.filter(g => g.media_type === 'image')
+            const idx = images.findIndex(g => g.id === lightbox.id)
+            return (
+              <>
+                <button
+                  onClick={e => { e.stopPropagation(); setLightbox(images[(idx - 1 + images.length) % images.length]) }}
+                  style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 48, height: 48, borderRadius: '50%', cursor: 'pointer', fontSize: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >‹</button>
+                <button
+                  onClick={e => { e.stopPropagation(); setLightbox(images[(idx + 1) % images.length]) }}
+                  style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 48, height: 48, borderRadius: '50%', cursor: 'pointer', fontSize: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >›</button>
+              </>
+            )
+          })()}
+        </div>
+      )}
+
+      {/* ── BOOKING MODAL ── */}
       {bookingDoctor && (
         <BookingModal
           doctor={bookingDoctor}
@@ -247,6 +399,25 @@ export default function ClinicSiteClient({ clinic, websiteContent, gallery, doct
           accent={accent}
         />
       )}
+    </div>
+  )
+}
+
+// ── Helper nav/stat components ───────────────────────────────────
+
+function NavBtn({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button onClick={onClick} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 500, color: '#4b5d54' }}>
+      {label}
+    </button>
+  )
+}
+
+function StatBar({ value, label }: { value: string | number; label: string }) {
+  return (
+    <div style={{ textAlign: 'center', padding: '0 36px', borderRight: '1px solid rgba(255,255,255,0.2)', flex: 1, minWidth: 140 }}>
+      <div style={{ fontSize: 34, fontWeight: 800, color: '#fff', lineHeight: 1 }}>{value}</div>
+      <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.78)', marginTop: 6, fontWeight: 500 }}>{label}</div>
     </div>
   )
 }
