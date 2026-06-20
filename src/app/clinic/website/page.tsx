@@ -6,6 +6,7 @@ import PageCard from '@/components/ui/PageCard'
 import AppBtn from '@/components/ui/AppBtn'
 import { FormField, AppInput, AppTextarea } from '@/components/ui/FormField'
 import type { HeroSlide, WebsiteService } from '@/types/database'
+import MediaUpload from '@/components/ui/MediaUpload'
 
 function uid() {
   return Math.random().toString(36).slice(2, 10)
@@ -284,8 +285,13 @@ export default function WebsitePage() {
                     </select>
                   </FormField>
                   <FormField label="URL (Image/Video link)">
-                    <AppInput value={slide.url} onChange={e => updateSlide(idx, 'url', e.target.value)}
-                      placeholder={slide.type === 'video' ? 'https://...mp4 ya YouTube embed' : 'https://...jpg/png'} />
+                    <MediaUpload
+                      value={slide.url}
+                      onChange={url => updateSlide(idx, 'url', url)}
+                      accept={slide.type === 'video' ? 'video/*' : 'image/*'}
+                      placeholder={slide.type === 'video' ? 'https://...mp4' : 'https://...jpg/png'}
+                      previewType={slide.type}
+                    />
                   </FormField>
                   <FormField label="Heading (Title)">
                     <AppInput value={slide.title} onChange={e => updateSlide(idx, 'title', e.target.value)}
@@ -305,11 +311,6 @@ export default function WebsitePage() {
                   </FormField>
                 </div>
 
-                {slide.url && slide.type === 'image' && (
-                  <img src={slide.url} alt="preview" className="rounded-lg w-full object-cover"
-                    style={{ maxHeight: 160, border: '1px solid var(--b1)' }}
-                    onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
-                )}
               </div>
             ))}
           </div>
@@ -333,8 +334,13 @@ export default function WebsitePage() {
                 </select>
               </FormField>
               <FormField label="URL">
-                <AppInput value={newMedia.url} onChange={e => setNewMedia(p => ({ ...p, url: e.target.value }))}
-                  placeholder="https://example.com/photo.jpg" />
+                <MediaUpload
+                  value={newMedia.url}
+                  onChange={url => setNewMedia(p => ({ ...p, url }))}
+                  accept={newMedia.media_type === 'video' ? 'video/*' : 'image/*'}
+                  placeholder="https://example.com/photo.jpg"
+                  previewType={newMedia.media_type}
+                />
               </FormField>
               <FormField label="Caption (optional)">
                 <AppInput value={newMedia.caption} onChange={e => setNewMedia(p => ({ ...p, caption: e.target.value }))}

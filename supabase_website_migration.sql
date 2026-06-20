@@ -28,7 +28,10 @@ CREATE TABLE IF NOT EXISTS clinic_website_content (
 );
 
 -- 3. Create clinic_gallery table
-CREATE TYPE IF NOT EXISTS media_type AS ENUM ('image', 'video');
+DO $$ BEGIN
+  CREATE TYPE media_type AS ENUM ('image', 'video');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 CREATE TABLE IF NOT EXISTS clinic_gallery (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
