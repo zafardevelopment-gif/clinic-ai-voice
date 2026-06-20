@@ -37,7 +37,8 @@ export async function POST(
   const { data: clinic } = await db
     .from('clinics')
     .select('id')
-    .eq('slug', slug)
+    .eq('website_slug', slug)
+    .eq('website_enabled', true)
     .eq('is_active', true)
     .single()
 

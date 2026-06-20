@@ -22,7 +22,8 @@ export async function GET(
   const { data: clinic } = await db
     .from('clinics')
     .select('id')
-    .eq('slug', slug)
+    .eq('website_slug', slug)
+    .eq('website_enabled', true)
     .eq('is_active', true)
     .single()
 
