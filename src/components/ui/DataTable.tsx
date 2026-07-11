@@ -12,7 +12,7 @@ interface DataTableProps<T> {
   emptyIcon?: string
 }
 
-export default function DataTable<T extends Record<string, unknown>>({ columns, data, emptyMessage = 'No data found', emptyIcon = '📋' }: DataTableProps<T>) {
+export default function DataTable<T extends object>({ columns, data, emptyMessage = 'No data found', emptyIcon = '📋' }: DataTableProps<T>) {
   if (data.length === 0) {
     return (
       <div className="flex flex-col items-center py-16 text-center">
@@ -43,7 +43,7 @@ export default function DataTable<T extends Record<string, unknown>>({ columns, 
                 <td key={col.key}
                   className="px-4 py-3 text-sm align-middle group-hover:bg-[rgba(16,185,129,0.05)]"
                   style={{ borderBottom: i < data.length - 1 ? '1px solid rgba(228,235,231,1)' : 'none', color: 'var(--txt)' }}>
-                  {col.render ? col.render(row) : String(row[col.key] ?? '')}
+                  {col.render ? col.render(row) : String((row as Record<string, unknown>)[col.key] ?? '')}
                 </td>
               ))}
             </tr>

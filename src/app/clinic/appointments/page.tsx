@@ -21,6 +21,19 @@ interface AppointmentRow {
   doctors: { full_name: string; specialization: string | null } | null
 }
 
+interface TimelineReminder {
+  id: string
+  type: string
+  channel: string
+  status: string
+  response: string | null
+  scheduled_at: string
+  placed_at: string | null
+  ended_at: string | null
+  error_message: string | null
+  events: { id: string; event_type: string; created_at: string }[]
+}
+
 interface PatientOption { id: string; full_name: string; phone?: string }
 interface DoctorOption { id: string; full_name: string; specialization?: string | null; department_id?: string | null; departments?: { name: string } | null }
 
@@ -39,6 +52,9 @@ export default function AppointmentsPage() {
   const [slotsLoading, setSlotsLoading] = useState(false)
   const [patientSearch, setPatientSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [timelineFor, setTimelineFor] = useState<AppointmentRow | null>(null)
+  const [timeline, setTimeline] = useState<TimelineReminder[]>([])
+  const [timelineLoading, setTimelineLoading] = useState(false)
   const [form, setForm] = useState({
     patient_id: '', patient_name_type: '',
     doctor_id: '', appointment_date: today(),
@@ -126,6 +142,29 @@ export default function AppointmentsPage() {
     }
   }
 
+  async function markNoShow(id: string) {
+    const res = await fetch(`/api/clinic/appointments/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'no_show', no_show_marked_at: new Date().toISOString() }),
+    })
+    const data = await res.json()
+    if (res.ok) setAppointments(prev => prev.map(a => a.id === id ? data : a))
+  }
+
+  async function openTimeline(appt: AppointmentRow) {
+    setTimelineFor(appt)
+    setTimelineLoading(true)
+    setTimeline([])
+    try {
+      const res = await fetch(`/api/clinic/appointments/${appt.id}/timeline`)
+      const data = await res.json()
+      setTimeline(data.reminders || [])
+    } finally {
+      setTimelineLoading(false)
+    }
+  }
+
   const filtered = statusFilter === 'all' ? appointments : appointments.filter(a => a.status === statusFilter)
   const statuses = ['all', 'scheduled', 'confirmed', 'completed', 'cancelled', 'no_show']
   const filteredPatients = patients.filter(p => p.full_name.toLowerCase().includes(patientSearch.toLowerCase()) || (p.phone || '').includes(patientSearch))
@@ -187,7 +226,13 @@ export default function AppointmentsPage() {
                     <StatusBadge variant={appt.status} />
                   </td>
                   <td className="px-4 py-3 group-hover:bg-[rgba(16,185,129,0.05)]" style={{ borderBottom: i < filtered.length - 1 ? '1px solid rgba(228,235,231,1)' : 'none' }}>
-                    <AppBtn variant="secondary" size="sm" onClick={() => openEdit(appt)}>Update</AppBtn>
+                    <div className="flex gap-1.5 flex-wrap">
+                      <AppBtn variant="secondary" size="sm" onClick={() => openEdit(appt)}>Update</AppBtn>
+                      <AppBtn variant="ghost" size="sm" onClick={() => openTimeline(appt)}>Timeline</AppBtn>
+                      {appt.status !== 'no_show' && appt.status !== 'cancelled' && appt.status !== 'completed' && (
+                        <AppBtn variant="ghost" size="sm" onClick={() => markNoShow(appt.id)}>Mark No-Show</AppBtn>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -379,6 +424,48 @@ export default function AppointmentsPage() {
             </div>
           </div>
         </div>
+      </AppModal>
+
+      <AppModal
+        open={!!timelineFor}
+        onClose={() => setTimelineFor(null)}
+        title={`Communication Timeline — ${timelineFor?.patients?.full_name || timelineFor?.patient_name || ''}`}
+        size="lg"
+      >
+        {timelineLoading ? (
+          <div className="text-sm py-8 text-center" style={{ color: 'var(--txt3)' }}>Loading…</div>
+        ) : timeline.length === 0 ? (
+          <div className="text-sm py-8 text-center" style={{ color: 'var(--txt3)' }}>No reminders sent for this appointment yet.</div>
+        ) : (
+          <div className="space-y-4">
+            {timeline.map(r => (
+              <div key={r.id} className="rounded-xl p-4" style={{ background: 'var(--s1)', border: '1px solid var(--b1)' }}>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-sm font-semibold capitalize" style={{ color: 'var(--txt)' }}>
+                    {r.type.replace(/_/g, ' ')} · {r.channel}
+                  </div>
+                  <StatusBadge variant={r.status} />
+                </div>
+                <div className="text-[11px] mb-2" style={{ color: 'var(--txt3)' }}>
+                  Scheduled: {new Date(r.scheduled_at).toLocaleString()}
+                  {r.response && <> · Response: <span style={{ color: 'var(--acc)' }}>{r.response}</span></>}
+                </div>
+                {r.error_message && (
+                  <div className="text-[11px] mb-2" style={{ color: 'var(--rose)' }}>{r.error_message}</div>
+                )}
+                {r.events.length > 0 && (
+                  <div className="flex flex-col gap-1 mt-2 pl-3" style={{ borderLeft: '2px solid var(--b2)' }}>
+                    {r.events.map(e => (
+                      <div key={e.id} className="text-[11px]" style={{ color: 'var(--txt2)' }}>
+                        <span className="capitalize font-medium">{e.event_type}</span> — {new Date(e.created_at).toLocaleString()}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </AppModal>
     </div>
   )

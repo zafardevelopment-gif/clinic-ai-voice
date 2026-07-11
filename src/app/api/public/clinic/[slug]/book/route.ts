@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
+import { enqueueBookingConfirmation } from '@/lib/reminders/enqueue-confirmation'
 
 // Public endpoint — no auth needed
 // POST /api/public/clinic/[slug]/book
@@ -116,6 +117,13 @@ export async function POST(
     console.error('Booking error:', error)
     return NextResponse.json({ error: 'Booking failed. Please try again.' }, { status: 500 })
   }
+
+  await enqueueBookingConfirmation({
+    clinicId: clinic.id,
+    appointmentId: appointment.id,
+    patientId,
+    toNumber: patient_phone.trim(),
+  })
 
   return NextResponse.json({ success: true, appointment_id: appointment.id }, { status: 201 })
 }

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Topbar from '@/components/layout/Topbar'
 import PageCard from '@/components/ui/PageCard'
 import AppBtn from '@/components/ui/AppBtn'
+import StatCard from '@/components/ui/StatCard'
 import { FormField, AppInput, AppSelect } from '@/components/ui/FormField'
 
 interface Settings {
@@ -25,6 +26,24 @@ interface Settings {
   template_birthday: string | null
   max_retries: number
   retry_gap_minutes: number
+  channel_appointment_24h: 'voice' | 'whatsapp' | 'sms'
+  channel_appointment_2h: 'voice' | 'whatsapp' | 'sms'
+  channel_post_visit: 'voice' | 'whatsapp' | 'sms'
+  channel_birthday: 'voice' | 'whatsapp' | 'sms'
+}
+
+interface Analytics {
+  totalSent: number
+  confirmationRate: number
+  noShowRate: number
+  rescheduleRate: number
+}
+
+const CHANNEL_KEY: Partial<Record<keyof Settings, keyof Settings>> = {
+  appointment_24h_enabled: 'channel_appointment_24h',
+  appointment_2h_enabled: 'channel_appointment_2h',
+  post_visit_enabled: 'channel_post_visit',
+  birthday_enabled: 'channel_birthday',
 }
 
 interface Subscription {
@@ -52,6 +71,7 @@ export default function ClinicRemindersPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [dirty, setDirty] = useState(false)
+  const [analytics, setAnalytics] = useState<Analytics | null>(null)
 
   async function load() {
     setLoading(true)
@@ -64,6 +84,9 @@ export default function ClinicRemindersPage() {
     setDirty(false)
   }
   useEffect(() => { load() }, [])
+  useEffect(() => {
+    fetch('/api/clinic/analytics/reminders').then(r => r.json()).then(setAnalytics).catch(() => {})
+  }, [])
 
   function set<K extends keyof Settings>(key: K, value: Settings[K]) {
     setSettings(s => s ? { ...s, [key]: value } : s)
@@ -169,6 +192,16 @@ export default function ClinicRemindersPage() {
         </label>
       </PageCard>
 
+      {/* No-show / confirmation analytics */}
+      {analytics && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+          <StatCard icon="📤" label="Reminders sent" value={analytics.totalSent} color="blue" />
+          <StatCard icon="✅" label="Confirmation rate" value={`${analytics.confirmationRate}%`} color="teal" />
+          <StatCard icon="⚠️" label="No-show rate" value={`${analytics.noShowRate}%`} color="rose" />
+          <StatCard icon="🔁" label="Reschedule rate" value={`${analytics.rescheduleRate}%`} color="amber" />
+        </div>
+      )}
+
       {/* Per-type toggles */}
       <PageCard
         title="Reminder Types"
@@ -178,35 +211,52 @@ export default function ClinicRemindersPage() {
           {REMINDER_TYPES.map(t => {
             const allowed = !!entitled[t.featureKey]
             const enabled = !!settings[t.key]
+            const channelKey = CHANNEL_KEY[t.key]
             return (
-              <label
+              <div
                 key={t.key as string}
-                className={`flex items-start gap-3 p-3 rounded-lg ${allowed ? 'cursor-pointer' : 'cursor-not-allowed'}`}
+                className="flex flex-col gap-2 p-3 rounded-lg"
                 style={{
                   background: allowed && enabled ? 'var(--acc-dim)' : 'var(--s3)',
                   border: '1px solid var(--b1)',
                   opacity: allowed ? 1 : 0.5,
                 }}
               >
-                <input
-                  type="checkbox"
-                  disabled={!allowed}
-                  checked={enabled}
-                  onChange={e => set(t.key, e.target.checked as never)}
-                  className="mt-1"
-                />
-                <div className="flex-1">
-                  <div className="text-sm font-medium flex items-center gap-2" style={{ color: 'var(--txt)' }}>
-                    {t.label}
-                    {!allowed && (
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'var(--amber-dim)', color: 'var(--amber)' }}>
-                        UPGRADE
-                      </span>
-                    )}
+                <label className={`flex items-start gap-3 ${allowed ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
+                  <input
+                    type="checkbox"
+                    disabled={!allowed}
+                    checked={enabled}
+                    onChange={e => set(t.key, e.target.checked as never)}
+                    className="mt-1"
+                  />
+                  <div className="flex-1">
+                    <div className="text-sm font-medium flex items-center gap-2" style={{ color: 'var(--txt)' }}>
+                      {t.label}
+                      {!allowed && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'var(--amber-dim)', color: 'var(--amber)' }}>
+                          UPGRADE
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[11px]" style={{ color: 'var(--txt3)' }}>{t.desc}</div>
                   </div>
-                  <div className="text-[11px]" style={{ color: 'var(--txt3)' }}>{t.desc}</div>
-                </div>
-              </label>
+                </label>
+                {channelKey && enabled && allowed && (
+                  <div className="pl-7">
+                    <select
+                      value={settings[channelKey] as string}
+                      onChange={e => set(channelKey, e.target.value as never)}
+                      className="text-xs rounded-md px-2 py-1"
+                      style={{ background: 'var(--s1)', border: '1px solid var(--b2)', color: 'var(--txt)' }}
+                    >
+                      <option value="voice">📞 Voice call</option>
+                      <option value="whatsapp">💬 WhatsApp</option>
+                      <option value="sms">✉️ SMS</option>
+                    </select>
+                  </div>
+                )}
+              </div>
             )
           })}
         </div>

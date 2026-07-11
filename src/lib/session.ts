@@ -5,7 +5,7 @@ export const SESSION_COOKIE = 'ca_session'
 export interface SessionPayload {
   userId: string
   email: string
-  role: 'admin' | 'clinic_admin'
+  role: 'admin' | 'clinic_admin' | 'doctor' | 'receptionist'
   fullName: string | null
   clinicId: string | null
 }

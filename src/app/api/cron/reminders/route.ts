@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database'
-import { placeReminderCall } from '@/lib/reminders/place-call'
+import { dispatchReminder } from '@/lib/reminders/dispatch'
 
 /**
  * GET /api/cron/reminders
@@ -36,14 +36,94 @@ export async function GET(req: NextRequest) {
   ) as any
 
   const enqueued = await enqueueUpcoming(db)
+  const followUpsEnqueued = await enqueueFollowUps(db)
   const dispatched = await dispatchDue(db)
 
   return NextResponse.json({
     ok: true,
     enqueued,
+    followUpsEnqueued,
     dispatched: dispatched.length,
     results: dispatched,
   })
+}
+
+// ─── ENQUEUE: medication + follow-up-visit reminders from active follow_up_plans ──
+// Module B (adherence). Same "insert if not already queued" idempotency via
+// the UNIQUE(appointment_id, type) constraint doesn't apply here since these
+// aren't appointment-tied — instead we check reminder_events/metadata isn't
+// duplicated by only enqueueing one open reminder per plan per day.
+async function enqueueFollowUps(db: any): Promise<{ medication: number; follow_up_visit: number }> {
+  const { data: plans } = await db
+    .from('follow_up_plans')
+    .select('id, clinic_id, patient_id, follow_up_date, reminder_frequency, patients ( phone )')
+    .eq('status', 'active')
+    .limit(500)
+
+  if (!plans || plans.length === 0) return { medication: 0, follow_up_visit: 0 }
+
+  const todayIso = new Date().toISOString().slice(0, 10)
+  let medication = 0
+  let followUpVisit = 0
+
+  for (const plan of plans as any[]) {
+    const phone = plan.patients?.phone
+    if (!phone) continue
+
+    // Medication check-in: at most one per plan per calendar day, regardless
+    // of reminder_frequency granularity (daily/twice_daily/weekly) — the
+    // finer cadence is a V2 refinement; V1 sends one check-in/day for active plans.
+    const { data: existingToday } = await db
+      .from('appointment_reminders')
+      .select('id')
+      .eq('patient_id', plan.patient_id)
+      .eq('type', 'medication')
+      .gte('scheduled_at', `${todayIso}T00:00:00Z`)
+      .lte('scheduled_at', `${todayIso}T23:59:59Z`)
+      .contains('metadata', { follow_up_plan_id: plan.id })
+      .maybeSingle()
+
+    if (!existingToday) {
+      const { error } = await db.from('appointment_reminders').insert({
+        clinic_id: plan.clinic_id,
+        patient_id: plan.patient_id,
+        type: 'medication',
+        channel: 'whatsapp',
+        status: 'scheduled',
+        to_number: phone,
+        scheduled_at: new Date().toISOString(),
+        metadata: { follow_up_plan_id: plan.id },
+      })
+      if (!error) medication++
+    }
+
+    // Follow-up visit reminder: fire once, on the follow_up_date itself.
+    if (plan.follow_up_date === todayIso) {
+      const { data: existingVisit } = await db
+        .from('appointment_reminders')
+        .select('id')
+        .eq('patient_id', plan.patient_id)
+        .eq('type', 'follow_up_visit')
+        .contains('metadata', { follow_up_plan_id: plan.id })
+        .maybeSingle()
+
+      if (!existingVisit) {
+        const { error } = await db.from('appointment_reminders').insert({
+          clinic_id: plan.clinic_id,
+          patient_id: plan.patient_id,
+          type: 'follow_up_visit',
+          channel: 'whatsapp',
+          status: 'scheduled',
+          to_number: phone,
+          scheduled_at: new Date().toISOString(),
+          metadata: { follow_up_plan_id: plan.id },
+        })
+        if (!error) followUpVisit++
+      }
+    }
+  }
+
+  return { medication, follow_up_visit: followUpVisit }
 }
 
 // Allow Vercel Cron to use either GET (default) or POST.
@@ -97,11 +177,11 @@ async function enqueueForWindow(
 
   // Filter out clinics that have this reminder type disabled — saves us
   // creating rows that the dispatcher would just cancel via feature-gate.
-  const enabledClinics = await loadEnabledClinics(
-    db,
-    Array.from(new Set(candidates.map((c: any) => c.clinic_id))),
-    type === 'appointment_24h' ? 'appointment_24h_enabled' : 'appointment_2h_enabled',
-  )
+  const clinicIds: string[] = Array.from(new Set(candidates.map((c: any) => c.clinic_id as string)))
+  const toggleColumn = type === 'appointment_24h' ? 'appointment_24h_enabled' : 'appointment_2h_enabled'
+  const channelColumn = type === 'appointment_24h' ? 'channel_appointment_24h' : 'channel_appointment_2h'
+  const enabledClinics = await loadEnabledClinics(db, clinicIds, toggleColumn)
+  const channelMap = await loadClinicChannels(db, clinicIds, channelColumn)
 
   let created = 0
   for (const appt of candidates as any[]) {
@@ -128,6 +208,7 @@ async function enqueueForWindow(
       patient_id: appt.patient_id,
       type,
       status: 'scheduled',
+      channel: channelMap.get(appt.clinic_id) || 'voice',
       to_number: phone,
       scheduled_at: scheduledAt.toISOString(),
     })
@@ -162,11 +243,9 @@ async function enqueuePostVisit(db: any): Promise<number> {
 
   if (!candidates || candidates.length === 0) return 0
 
-  const enabledClinics = await loadEnabledClinics(
-    db,
-    Array.from(new Set(candidates.map((c: any) => c.clinic_id))),
-    'post_visit_enabled',
-  )
+  const clinicIds: string[] = Array.from(new Set(candidates.map((c: any) => c.clinic_id as string)))
+  const enabledClinics = await loadEnabledClinics(db, clinicIds, 'post_visit_enabled')
+  const channelMap = await loadClinicChannels(db, clinicIds, 'channel_post_visit')
 
   // Schedule each post-visit call for "today at 11am IST" — a friendly time
   // that respects the default call window.
@@ -189,6 +268,7 @@ async function enqueuePostVisit(db: any): Promise<number> {
       patient_id: appt.patient_id,
       type: 'post_visit',
       status: 'scheduled',
+      channel: channelMap.get(appt.clinic_id) || 'whatsapp',
       to_number: phone,
       scheduled_at: scheduledAt.toISOString(),
     })
@@ -221,6 +301,25 @@ async function loadEnabledClinics(
   return out
 }
 
+/** Map clinic_id → configured channel for a given reminder_settings channel column. */
+async function loadClinicChannels(
+  db: any,
+  clinicIds: string[],
+  channelColumn: string,
+): Promise<Map<string, string>> {
+  if (clinicIds.length === 0) return new Map()
+  const { data } = await db
+    .from('reminder_settings')
+    .select(`clinic_id, ${channelColumn}`)
+    .in('clinic_id', clinicIds)
+
+  const out = new Map<string, string>()
+  for (const row of (data as any[]) || []) {
+    if (row[channelColumn]) out.set(row.clinic_id, row[channelColumn])
+  }
+  return out
+}
+
 // ─── DISPATCH: place calls for due reminders ────────────────────────────────
 async function dispatchDue(db: any): Promise<Array<{ id: string; ok: boolean; reason?: string }>> {
   const now = new Date().toISOString()
@@ -238,7 +337,7 @@ async function dispatchDue(db: any): Promise<Array<{ id: string; ok: boolean; re
 
   const results: Array<{ id: string; ok: boolean; reason?: string }> = []
   for (const id of allowedIds) {
-    const r = await placeReminderCall(id)
+    const r = await dispatchReminder(id)
     results.push({ id: r.reminderId, ok: r.ok, reason: r.reason })
   }
   return results

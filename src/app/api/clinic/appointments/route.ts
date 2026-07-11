@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { getSession } from '@/lib/session'
+import { enqueueBookingConfirmation } from '@/lib/reminders/enqueue-confirmation'
 
 const APPT_SELECT = 'id, appointment_date, appointment_time, status, reason, booked_via, patient_name, patient_phone, patients(full_name), doctors(full_name, specialization)'
 
@@ -62,5 +63,16 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  if (data) {
+    const { data: patientRow } = await db.from('patients').select('phone').eq('id', body.patient_id).maybeSingle()
+    await enqueueBookingConfirmation({
+      clinicId,
+      appointmentId: (data as unknown as { id: string }).id,
+      patientId: body.patient_id,
+      toNumber: patientRow?.phone ?? null,
+    })
+  }
+
   return NextResponse.json(data)
 }

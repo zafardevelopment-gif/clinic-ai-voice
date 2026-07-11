@@ -43,6 +43,10 @@ const EDITABLE_FIELDS = [
   'template_birthday',
   'max_retries',
   'retry_gap_minutes',
+  'channel_appointment_24h',
+  'channel_appointment_2h',
+  'channel_post_visit',
+  'channel_birthday',
 ]
 
 async function resolveClinicId(): Promise<{ clinicId: string; isAdmin: boolean } | null> {

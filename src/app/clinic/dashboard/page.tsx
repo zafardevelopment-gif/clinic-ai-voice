@@ -5,6 +5,7 @@ import Topbar from '@/components/layout/Topbar'
 import StatCard from '@/components/ui/StatCard'
 import PageCard from '@/components/ui/PageCard'
 import StatusBadge from '@/components/ui/StatusBadge'
+import ClinicOsWidgets from '@/components/clinic/ClinicOsWidgets'
 import Link from 'next/link'
 
 export default async function ClinicDashboard() {
@@ -96,6 +97,8 @@ export default async function ClinicDashboard() {
           <StatCard icon="✅" label="Booked via AI Today"   value={bookedToday ?? 0}          color="teal" />
           <StatCard icon="🎯" label="Conversion Rate Today" value={`${convRate}%`}            color="amber" />
         </div>
+
+        <ClinicOsWidgets />
 
         {/* Two columns */}
         <div className="grid grid-cols-2 gap-4">

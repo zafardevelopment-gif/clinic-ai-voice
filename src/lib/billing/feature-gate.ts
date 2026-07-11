@@ -25,6 +25,9 @@ export type FeatureKey =
   | 'broadcast'
   | 'custom_voice'
   | 'pdf_report'
+  | 'medicine_adherence'
+  | 'symptom_triage'
+  | 'lab_report_explain'
 
 const TOGGLE_COLUMN: Partial<Record<FeatureKey, string>> = {
   appointment_24h: 'appointment_24h_enabled',

@@ -17,7 +17,7 @@ interface NavSection {
 }
 
 interface SidebarProps {
-  role: 'admin' | 'clinic_admin'
+  role: 'admin' | 'clinic_admin' | 'doctor' | 'receptionist'
   userName?: string
   clinicName?: string
 }
@@ -94,6 +94,15 @@ const clinicNav: NavSection[] = [
       { icon: '🔔', label: 'Reminder Settings', href: '/clinic/reminders' },
       { icon: '📜', label: 'Reminder Logs', href: '/clinic/reminders/logs' },
       { icon: '📈', label: 'Monthly Reports', href: '/clinic/reports' },
+    ],
+  },
+  {
+    label: 'Clinic OS',
+    items: [
+      { icon: '💊', label: 'Follow-ups', href: '/clinic/follow-ups' },
+      { icon: '🩺', label: 'Symptom Triage', href: '/clinic/triage' },
+      { icon: '🧪', label: 'Lab Reports', href: '/clinic/lab-reports' },
+      { icon: '💵', label: 'Ledger', href: '/clinic/ledger' },
     ],
   },
   {

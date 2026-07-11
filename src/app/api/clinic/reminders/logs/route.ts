@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
   let q = db
     .from('appointment_reminders')
     .select(`
-      id, type, status, response, scheduled_at, placed_at, ended_at,
+      id, type, status, response, channel, scheduled_at, placed_at, ended_at,
       to_number, duration_seconds, dtmf_received, attempt, error_message,
       patients ( full_name ),
       appointments ( appointment_date, appointment_time )

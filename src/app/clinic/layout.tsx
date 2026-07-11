@@ -7,7 +7,8 @@ export default async function ClinicLayout({ children }: { children: React.React
   const session = await getSession()
 
   if (!session) redirect('/login')
-  if (session.role !== 'clinic_admin') redirect('/admin/dashboard')
+  if (session.role === 'admin') redirect('/admin/dashboard')
+  if (!['clinic_admin', 'doctor', 'receptionist'].includes(session.role)) redirect('/login')
 
   let clinicName: string | undefined
   if (session.clinicId) {
@@ -23,7 +24,7 @@ export default async function ClinicLayout({ children }: { children: React.React
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: 'var(--bg)' }}>
       <Sidebar
-        role="clinic_admin"
+        role={session.role as 'clinic_admin' | 'doctor' | 'receptionist'}
         userName={session.fullName || session.email}
         clinicName={clinicName}
       />
