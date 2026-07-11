@@ -7,9 +7,11 @@ import AppBtn from '@/components/ui/AppBtn'
 import AppModal from '@/components/ui/AppModal'
 import StatusBadge from '@/components/ui/StatusBadge'
 import { FormField, AppInput, AppSelect, AppTextarea } from '@/components/ui/FormField'
+import LedgerQuickEntryModal from '@/components/clinic/LedgerQuickEntryModal'
 
 interface AppointmentRow {
   id: string
+  patient_id: string | null
   appointment_date: string
   appointment_time: string
   status: string
@@ -18,7 +20,7 @@ interface AppointmentRow {
   patient_name: string | null
   patient_phone: string | null
   patients: { full_name: string } | null
-  doctors: { full_name: string; specialization: string | null } | null
+  doctors: { full_name: string; specialization: string | null; consultation_fee: number | null } | null
 }
 
 interface TimelineReminder {
@@ -55,6 +57,10 @@ export default function AppointmentsPage() {
   const [timelineFor, setTimelineFor] = useState<AppointmentRow | null>(null)
   const [timeline, setTimeline] = useState<TimelineReminder[]>([])
   const [timelineLoading, setTimelineLoading] = useState(false)
+  const [billingFor, setBillingFor] = useState<{ appt: AppointmentRow; entryType: 'patient_collection' | 'patient_refund' } | null>(null)
+  const [listQuery, setListQuery] = useState('')
+  const [page, setPage] = useState(1)
+  const PAGE_SIZE = 10
   const [form, setForm] = useState({
     patient_id: '', patient_name_type: '',
     doctor_id: '', appointment_date: today(),
@@ -72,6 +78,8 @@ export default function AppointmentsPage() {
       setDoctors(Array.isArray(docs) ? docs.filter((d: DoctorOption) => d) : [])
     }).finally(() => setLoading(false))
   }, [])
+
+  useEffect(() => { setPage(1) }, [listQuery, statusFilter])
 
   // Fetch slots when doctor or date changes
   useEffect(() => {
@@ -165,9 +173,20 @@ export default function AppointmentsPage() {
     }
   }
 
-  const filtered = statusFilter === 'all' ? appointments : appointments.filter(a => a.status === statusFilter)
+  const statusFiltered = statusFilter === 'all' ? appointments : appointments.filter(a => a.status === statusFilter)
+  const q = listQuery.trim().toLowerCase()
+  const filtered = q === '' ? statusFiltered : statusFiltered.filter(a => {
+    const patientName = (a.patients?.full_name || a.patient_name || '').toLowerCase()
+    const phone = (a.patient_phone || '').toLowerCase()
+    const doctorName = (a.doctors?.full_name || '').toLowerCase()
+    return patientName.includes(q) || phone.includes(q) || doctorName.includes(q)
+  })
   const statuses = ['all', 'scheduled', 'confirmed', 'completed', 'cancelled', 'no_show']
   const filteredPatients = patients.filter(p => p.full_name.toLowerCase().includes(patientSearch.toLowerCase()) || (p.phone || '').includes(patientSearch))
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const currentPage = Math.min(page, totalPages)
+  const paginated = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
 
   const formatTime = (t: string) => {
     const [h, m] = t.split(':').map(Number)
@@ -181,18 +200,29 @@ export default function AppointmentsPage() {
         actions={<AppBtn icon="+" onClick={openNew}>Book Appointment</AppBtn>} />
 
       <div className="flex-1 overflow-y-auto p-6">
-        <PageCard title="Appointment Schedule" noPad
-          actions={
-            <div className="flex gap-1.5 flex-wrap">
-              {statuses.map(s => (
-                <button key={s} onClick={() => setStatusFilter(s)}
-                  className="px-3 py-1.5 rounded-full text-xs font-medium transition-all capitalize"
-                  style={{ background: statusFilter === s ? 'var(--acc-dim)' : 'var(--s3)', border: `1px solid ${statusFilter === s ? 'var(--acc)' : 'var(--b2)'}`, color: statusFilter === s ? 'var(--acc)' : 'var(--txt2)', cursor: 'pointer' }}>
-                  {s === 'all' ? 'All' : s.replace('_', ' ')}
-                </button>
-              ))}
-            </div>
-          }>
+        <div className="flex items-center gap-3 mb-4 flex-wrap">
+          <div className="relative flex-1" style={{ minWidth: 240, maxWidth: 360 }}>
+            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 13, color: 'var(--txt3)' }}>🔍</span>
+            <input
+              value={listQuery}
+              onChange={e => setListQuery(e.target.value)}
+              placeholder="Search patient, phone, or doctor…"
+              className="w-full text-sm outline-none"
+              style={{ background: 'var(--s2)', border: '1px solid var(--b1)', borderRadius: 10, padding: '9px 14px 9px 34px', color: 'var(--txt)' }}
+            />
+          </div>
+          <div className="flex gap-1.5 flex-wrap">
+            {statuses.map(s => (
+              <button key={s} onClick={() => setStatusFilter(s)}
+                className="px-3 py-1.5 rounded-full text-xs font-medium transition-all capitalize"
+                style={{ background: statusFilter === s ? 'var(--acc-dim)' : 'var(--s3)', border: `1px solid ${statusFilter === s ? 'var(--acc)' : 'var(--b2)'}`, color: statusFilter === s ? 'var(--acc)' : 'var(--txt2)', cursor: 'pointer' }}>
+                {s === 'all' ? 'All' : s.replace('_', ' ')}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <PageCard title="Appointment Schedule" subtitle={`${filtered.length} matching`} noPad>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr>
@@ -203,32 +233,34 @@ export default function AppointmentsPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((appt, i) => (
+              {paginated.map((appt, i) => (
                 <tr key={appt.id} className="group">
-                  <td className="px-4 py-3 group-hover:bg-[rgba(16,185,129,0.05)]" style={{ borderBottom: i < filtered.length - 1 ? '1px solid rgba(228,235,231,1)' : 'none' }}>
+                  <td className="px-4 py-3 group-hover:bg-[rgba(16,185,129,0.05)]" style={{ borderBottom: i < paginated.length - 1 ? '1px solid rgba(228,235,231,1)' : 'none' }}>
                     <div className="text-sm font-semibold" style={{ color: 'var(--txt)' }}>{appt.patients?.full_name || appt.patient_name || '—'}</div>
                     {appt.patient_phone && !appt.patients && <div className="text-[11px]" style={{ color: 'var(--txt3)' }}>{appt.patient_phone}</div>}
                   </td>
-                  <td className="px-4 py-3 text-[12px] group-hover:bg-[rgba(16,185,129,0.05)]" style={{ borderBottom: i < filtered.length - 1 ? '1px solid rgba(228,235,231,1)' : 'none', color: 'var(--txt2)' }}>
+                  <td className="px-4 py-3 text-[12px] group-hover:bg-[rgba(16,185,129,0.05)]" style={{ borderBottom: i < paginated.length - 1 ? '1px solid rgba(228,235,231,1)' : 'none', color: 'var(--txt2)' }}>
                     <div>{appt.doctors?.full_name || '—'}</div>
                     <div className="text-[10px]" style={{ color: 'var(--txt3)' }}>{appt.doctors?.specialization || ''}</div>
                   </td>
-                  <td className="px-4 py-3 group-hover:bg-[rgba(16,185,129,0.05)]" style={{ borderBottom: i < filtered.length - 1 ? '1px solid rgba(228,235,231,1)' : 'none' }}>
+                  <td className="px-4 py-3 group-hover:bg-[rgba(16,185,129,0.05)]" style={{ borderBottom: i < paginated.length - 1 ? '1px solid rgba(228,235,231,1)' : 'none' }}>
                     <div className="text-sm" style={{ color: 'var(--txt)' }}>{appt.appointment_date}</div>
                     <div className="text-[11px]" style={{ color: 'var(--txt3)' }}>{formatTime(appt.appointment_time?.slice(0, 5) || '00:00')}</div>
                   </td>
-                  <td className="px-4 py-3 group-hover:bg-[rgba(16,185,129,0.05)]" style={{ borderBottom: i < filtered.length - 1 ? '1px solid rgba(228,235,231,1)' : 'none' }}>
+                  <td className="px-4 py-3 group-hover:bg-[rgba(16,185,129,0.05)]" style={{ borderBottom: i < paginated.length - 1 ? '1px solid rgba(228,235,231,1)' : 'none' }}>
                     <span className="text-[11px] px-2 py-0.5 rounded-full" style={{ background: appt.booked_via === 'ai_voice' ? 'var(--violet-dim)' : 'var(--s3)', color: appt.booked_via === 'ai_voice' ? 'var(--violet)' : 'var(--txt2)' }}>
                       {appt.booked_via === 'ai_voice' ? '🤖 AI Voice' : appt.booked_via}
                     </span>
                   </td>
-                  <td className="px-4 py-3 group-hover:bg-[rgba(16,185,129,0.05)]" style={{ borderBottom: i < filtered.length - 1 ? '1px solid rgba(228,235,231,1)' : 'none' }}>
+                  <td className="px-4 py-3 group-hover:bg-[rgba(16,185,129,0.05)]" style={{ borderBottom: i < paginated.length - 1 ? '1px solid rgba(228,235,231,1)' : 'none' }}>
                     <StatusBadge variant={appt.status} />
                   </td>
-                  <td className="px-4 py-3 group-hover:bg-[rgba(16,185,129,0.05)]" style={{ borderBottom: i < filtered.length - 1 ? '1px solid rgba(228,235,231,1)' : 'none' }}>
+                  <td className="px-4 py-3 group-hover:bg-[rgba(16,185,129,0.05)]" style={{ borderBottom: i < paginated.length - 1 ? '1px solid rgba(228,235,231,1)' : 'none' }}>
                     <div className="flex gap-1.5 flex-wrap">
                       <AppBtn variant="secondary" size="sm" onClick={() => openEdit(appt)}>Update</AppBtn>
                       <AppBtn variant="ghost" size="sm" onClick={() => openTimeline(appt)}>Timeline</AppBtn>
+                      <AppBtn variant="ghost" size="sm" onClick={() => setBillingFor({ appt, entryType: 'patient_collection' })}>Collect</AppBtn>
+                      <AppBtn variant="ghost" size="sm" onClick={() => setBillingFor({ appt, entryType: 'patient_refund' })}>Refund</AppBtn>
                       {appt.status !== 'no_show' && appt.status !== 'cancelled' && appt.status !== 'completed' && (
                         <AppBtn variant="ghost" size="sm" onClick={() => markNoShow(appt.id)}>Mark No-Show</AppBtn>
                       )}
@@ -245,6 +277,19 @@ export default function AppointmentsPage() {
             </tbody>
           </table>
         </PageCard>
+
+        {filtered.length > PAGE_SIZE && (
+          <div className="flex items-center justify-between mt-3 px-1">
+            <span className="text-xs" style={{ color: 'var(--txt3)' }}>
+              Showing {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, filtered.length)} of {filtered.length}
+            </span>
+            <div className="flex items-center gap-1.5">
+              <AppBtn variant="secondary" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={currentPage <= 1}>← Prev</AppBtn>
+              <span className="text-xs px-2" style={{ color: 'var(--txt2)' }}>Page {currentPage} of {totalPages}</span>
+              <AppBtn variant="secondary" size="sm" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={currentPage >= totalPages}>Next →</AppBtn>
+            </div>
+          </div>
+        )}
       </div>
 
       <AppModal open={open} onClose={() => setOpen(false)} title={editId ? 'Update Appointment' : 'Book Appointment'} size="lg"
@@ -467,6 +512,19 @@ export default function AppointmentsPage() {
           </div>
         )}
       </AppModal>
+
+      {billingFor && (
+        <LedgerQuickEntryModal
+          open={!!billingFor}
+          onClose={() => setBillingFor(null)}
+          onSaved={() => {}}
+          entryType={billingFor.entryType}
+          patientId={billingFor.appt.patient_id}
+          patientName={billingFor.appt.patients?.full_name || billingFor.appt.patient_name || undefined}
+          appointmentId={billingFor.appt.id}
+          defaultAmount={billingFor.entryType === 'patient_collection' ? billingFor.appt.doctors?.consultation_fee : null}
+        />
+      )}
     </div>
   )
 }

@@ -86,8 +86,8 @@ export default function LedgerPage() {
     }
   }, [tab])
 
-  function openNew() {
-    setEntryType('patient_collection')
+  function openNew(presetType: EntryType = 'patient_collection') {
+    setEntryType(presetType)
     setAmount('')
     setPatientId('')
     setPaymentMethod('cash')
@@ -135,7 +135,13 @@ export default function LedgerPage() {
       <Topbar
         title="Ledger"
         subtitle="Patient collections, refunds, staff & clinic expenses"
-        actions={<AppBtn icon="+" onClick={openNew}>New Entry</AppBtn>}
+        actions={
+          <div className="flex gap-2">
+            <AppBtn variant="secondary" icon="💰" onClick={() => openNew('patient_collection')}>Collect Payment</AppBtn>
+            <AppBtn variant="secondary" icon="↩️" onClick={() => openNew('patient_refund')}>Refund</AppBtn>
+            <AppBtn icon="+" onClick={() => openNew('patient_collection')}>New Entry</AppBtn>
+          </div>
+        }
       />
       <div className="flex-1 overflow-y-auto p-6">
         <div className="flex gap-1.5 mb-4">

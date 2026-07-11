@@ -3,7 +3,7 @@ import { getDb } from '@/lib/db'
 import { getSession } from '@/lib/session'
 import { enqueueBookingConfirmation } from '@/lib/reminders/enqueue-confirmation'
 
-const APPT_SELECT = 'id, appointment_date, appointment_time, status, reason, booked_via, patient_name, patient_phone, patients(full_name), doctors(full_name, specialization)'
+const APPT_SELECT = 'id, patient_id, appointment_date, appointment_time, status, reason, booked_via, patient_name, patient_phone, patients(full_name), doctors(full_name, specialization, consultation_fee)'
 
 export async function GET() {
   const session = await getSession()
