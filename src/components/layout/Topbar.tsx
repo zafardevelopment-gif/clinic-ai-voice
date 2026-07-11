@@ -12,7 +12,7 @@ export default function Topbar({ title, subtitle, actions }: TopbarProps) {
       className="flex items-center gap-2 sm:gap-3 px-3 sm:px-6 z-10"
       style={{
         height: 58, minHeight: 58,
-        background: 'rgba(7,11,18,0.85)',
+        background: 'var(--s1)',
         borderBottom: '1px solid var(--b1)',
         backdropFilter: 'blur(12px)',
       }}
