@@ -66,7 +66,17 @@ interface Props {
 export default function ClinicSiteClient({ clinic, websiteContent, gallery, doctors }: Props) {
   const [bookingDoctor, setBookingDoctor] = useState<Doctor | null>(null)
   const [lightbox, setLightbox] = useState<GalleryItem | null>(null)
+  const [doctorQuery, setDoctorQuery] = useState('')
+  const [specialtyFilter, setSpecialtyFilter] = useState('all')
   const accent = '#10b981'
+
+  const specialties = Array.from(new Set(doctors.map(d => d.specialization).filter((s): s is string => !!s)))
+  const filteredDoctors = doctors.filter(d => {
+    if (specialtyFilter !== 'all' && d.specialization !== specialtyFilter) return false
+    if (!doctorQuery.trim()) return true
+    const q = doctorQuery.trim().toLowerCase()
+    return d.full_name.toLowerCase().includes(q) || (d.specialization || '').toLowerCase().includes(q)
+  })
 
   const heroSlides: HeroSlide[] = websiteContent?.hero_slides || []
   const services: WebsiteService[] = websiteContent?.services || []
@@ -219,11 +229,39 @@ export default function ClinicSiteClient({ clinic, websiteContent, gallery, doct
         {doctors.length === 0 ? (
           <p style={{ textAlign: 'center', color: '#7a8d83', marginTop: 32 }}>Doctor information coming soon.</p>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 24, marginTop: 44 }}>
-            {doctors.map(doc => (
-              <DoctorCard key={doc.id} doctor={doc} accent={accent} onBook={() => setBookingDoctor(doc)} />
-            ))}
-          </div>
+          <>
+            {(doctors.length > 5 || specialties.length > 1) && (
+              <div style={{ maxWidth: 1100, margin: '36px auto 0', display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'center' }}>
+                <div style={{ position: 'relative', width: '100%', maxWidth: 420 }}>
+                  <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: '#9aada3' }}>🔍</span>
+                  <input
+                    value={doctorQuery}
+                    onChange={e => setDoctorQuery(e.target.value)}
+                    placeholder="Search doctor by name or specialty…"
+                    style={{ width: '100%', padding: '11px 16px 11px 38px', borderRadius: 10, border: '1px solid #e4ebe7', fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
+                  />
+                </div>
+                {specialties.length > 1 && (
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
+                    <FilterChip label="All" active={specialtyFilter === 'all'} accent={accent} onClick={() => setSpecialtyFilter('all')} />
+                    {specialties.map(s => (
+                      <FilterChip key={s} label={s} active={specialtyFilter === s} accent={accent} onClick={() => setSpecialtyFilter(s)} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {filteredDoctors.length === 0 ? (
+              <p style={{ textAlign: 'center', color: '#7a8d83', marginTop: 32 }}>No doctors match your search.</p>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 320px))', gap: 24, marginTop: 44, maxWidth: 1100, marginLeft: 'auto', marginRight: 'auto', justifyContent: 'center' }}>
+                {filteredDoctors.map(doc => (
+                  <DoctorCard key={doc.id} doctor={doc} accent={accent} onBook={() => setBookingDoctor(doc)} />
+                ))}
+              </div>
+            )}
+          </>
         )}
       </section>
 
@@ -255,7 +293,7 @@ export default function ClinicSiteClient({ clinic, websiteContent, gallery, doct
       {gallery.length > 0 && (
         <section id="gallery" style={{ padding: '80px 5%', background: '#f8fafb' }}>
           <SectionHeader accent={accent} tag="Gallery" title="Our Clinic" />
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 16, marginTop: 44 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 280px))', gap: 16, marginTop: 44, maxWidth: 1100, marginLeft: 'auto', marginRight: 'auto', justifyContent: 'center' }}>
             {gallery.map(item => (
               <div
                 key={item.id}
@@ -525,6 +563,23 @@ function Stat({ value, label }: { value: string | number; label: string }) {
       <div style={{ fontSize: 32, fontWeight: 800, color: '#0f1f17' }}>{value}</div>
       <div style={{ fontSize: 13, color: '#7a8d83', fontWeight: 500 }}>{label}</div>
     </div>
+  )
+}
+
+function FilterChip({ label, active, accent, onClick }: { label: string; active: boolean; accent: string; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        padding: '7px 16px', borderRadius: 100, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+        background: active ? accent : '#f1f5f3',
+        color: active ? '#fff' : '#4b5d54',
+        border: `1px solid ${active ? accent : '#e4ebe7'}`,
+        transition: 'all 0.15s',
+      }}
+    >
+      {label}
+    </button>
   )
 }
 
