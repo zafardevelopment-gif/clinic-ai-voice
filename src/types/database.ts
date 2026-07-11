@@ -6,6 +6,7 @@ export type CallType = 'booking' | 'query' | 'followup'
 export type CallOutcome = 'booked' | 'not_booked' | 'callback' | 'transferred'
 export type AppointmentStatus = 'scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'no_show'
 export type SpeakerType = 'user' | 'ai'
+export type DomainStatus = 'unset' | 'pending' | 'verified' | 'error'
 
 // ─── Clinic OS module enums (migration 0005) ────────────────────────────────
 export type ReminderChannel = 'voice' | 'whatsapp' | 'sms'
@@ -99,6 +100,11 @@ export type Database = {
           website_enabled: boolean
           website_url: string | null
           website_slug: string | null
+          custom_domain: string | null
+          domain_status: DomainStatus
+          domain_verification: Json
+          domain_added_at: string | null
+          domain_checked_at: string | null
           created_at: string
           updated_at: string
         }
@@ -120,6 +126,11 @@ export type Database = {
           website_enabled?: boolean
           website_url?: string | null
           website_slug?: string | null
+          custom_domain?: string | null
+          domain_status?: DomainStatus
+          domain_verification?: Json
+          domain_added_at?: string | null
+          domain_checked_at?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -140,6 +151,11 @@ export type Database = {
           website_enabled?: boolean
           website_url?: string | null
           website_slug?: string | null
+          custom_domain?: string | null
+          domain_status?: DomainStatus
+          domain_verification?: Json
+          domain_added_at?: string | null
+          domain_checked_at?: string | null
           updated_at?: string
         }
         Relationships: []

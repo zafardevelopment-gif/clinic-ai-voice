@@ -7,6 +7,7 @@ import AppBtn from '@/components/ui/AppBtn'
 import { FormField, AppInput, AppTextarea } from '@/components/ui/FormField'
 import type { HeroSlide, WebsiteService } from '@/types/database'
 import MediaUpload from '@/components/ui/MediaUpload'
+import CustomDomainCard from '@/components/clinic/CustomDomainCard'
 
 function uid() {
   return Math.random().toString(36).slice(2, 10)
@@ -243,6 +244,9 @@ export default function WebsitePage() {
             </div>
           </div>
         )}
+
+        {/* ── Custom Domain ── */}
+        <CustomDomainCard />
 
         {/* ── Hero Banner Slider ── */}
         <PageCard title="Hero Banner Slider" actions={
