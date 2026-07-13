@@ -7,6 +7,7 @@ import AppBtn from '@/components/ui/AppBtn'
 import AppModal from '@/components/ui/AppModal'
 import StatusBadge from '@/components/ui/StatusBadge'
 import { FormField, AppInput, AppSelect, AppTextarea } from '@/components/ui/FormField'
+import MediaUpload from '@/components/ui/MediaUpload'
 import type { Doctor, Department } from '@/types/database'
 
 interface DoctorWithDept extends Doctor {
@@ -143,10 +144,30 @@ export default function DoctorsPage() {
                 <tr key={doc.id} className="group">
                   <td className="px-4 py-3 group-hover:bg-[rgba(16,185,129,0.05)]"
                     style={{ borderBottom: i < doctors.length - 1 ? '1px solid rgba(228,235,231,1)' : 'none' }}>
-                    <div className="text-sm font-semibold" style={{ color: 'var(--txt)' }}>{doc.full_name}</div>
-                    <div className="text-[11px]" style={{ color: 'var(--txt3)' }}>
-                      {doc.specialization || '—'}
-                      {doc.years_of_experience ? ` · ${doc.years_of_experience}yr exp` : ''}
+                    <div className="flex items-center gap-3">
+                      {doc.avatar_url ? (
+                        <img
+                          src={doc.avatar_url}
+                          alt={doc.full_name}
+                          className="rounded-full object-cover flex-shrink-0"
+                          style={{ width: 36, height: 36, border: '1px solid var(--b1)' }}
+                          onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+                        />
+                      ) : (
+                        <div
+                          className="rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold"
+                          style={{ width: 36, height: 36, background: 'var(--acc-dim)', color: 'var(--acc)' }}
+                        >
+                          {doc.full_name[0]?.toUpperCase()}
+                        </div>
+                      )}
+                      <div>
+                        <div className="text-sm font-semibold" style={{ color: 'var(--txt)' }}>{doc.full_name}</div>
+                        <div className="text-[11px]" style={{ color: 'var(--txt3)' }}>
+                          {doc.specialization || '—'}
+                          {doc.years_of_experience ? ` · ${doc.years_of_experience}yr exp` : ''}
+                        </div>
+                      </div>
                     </div>
                   </td>
                   <td className="px-4 py-3 text-sm group-hover:bg-[rgba(16,185,129,0.05)]"
@@ -254,24 +275,15 @@ export default function DoctorsPage() {
             </FormField>
           </div>
           <div className="col-span-2">
-            <FormField label="Photo URL" hint="Paste a direct image link (e.g. from Google Drive, Cloudinary, etc.)">
-              <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                <div style={{ flex: 1 }}>
-                  <AppInput
-                    value={form.avatar_url}
-                    onChange={e => f('avatar_url', e.target.value)}
-                    placeholder="https://example.com/doctor-photo.jpg"
-                  />
-                </div>
-                {form.avatar_url && (
-                  <img
-                    src={form.avatar_url}
-                    alt="Preview"
-                    style={{ width: 56, height: 56, borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--b1)', flexShrink: 0 }}
-                    onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
-                  />
-                )}
-              </div>
+            <FormField label="Photo" hint="Upload a photo, or paste a direct image link">
+              <MediaUpload
+                value={form.avatar_url}
+                onChange={url => f('avatar_url', url)}
+                accept="image/*"
+                uploadEndpoint="/api/clinic/doctors/upload"
+                previewType="image"
+                placeholder="https://example.com/doctor-photo.jpg"
+              />
             </FormField>
           </div>
           <div className="col-span-2">

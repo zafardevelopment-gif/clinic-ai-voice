@@ -28,6 +28,7 @@ const adminNav: NavSection[] = [
     items: [
       { icon: '⚡', label: 'Dashboard', href: '/admin/dashboard' },
       { icon: '🏥', label: 'Clinics', href: '/admin/clinics' },
+      { icon: '👨‍⚕️', label: 'Doctors', href: '/admin/doctors' },
       { icon: '📊', label: 'Analytics', href: '/admin/analytics' },
     ],
   },
