@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { getPatientSession } from '@/lib/patient-auth'
 import { generateDoseSchedule } from '@/lib/patient/dose-schedule'
+import type { MedicineSource } from '@/types/database'
 
 /**
  * GET  /api/patient/medicines   list own active medicines
- * POST /api/patient/medicines   add a medicine (manual entry, Phase 1) + generate its dose schedule
+ * POST /api/patient/medicines   add a medicine (manual or OCR-confirmed) + generate its dose schedule
  */
 export async function GET(req: NextRequest) {
   const session = await getPatientSession(req)
@@ -34,6 +35,7 @@ export async function POST(req: NextRequest) {
     duration_days?: number | null
     times_of_day?: string[]
     started_at?: string
+    source?: MedicineSource
   }
   try {
     body = await req.json()
@@ -62,7 +64,10 @@ export async function POST(req: NextRequest) {
       frequency: body.frequency.trim(),
       duration_days: body.duration_days ?? null,
       times_of_day: timesOfDay,
-      source: 'manual',
+      // Only 'manual' or 'ocr' are accepted from the client — 'ocr' still
+      // requires the patient to have reviewed/edited the draft in-app
+      // before this POST fires; there's no unattended auto-save path.
+      source: body.source === 'ocr' ? 'ocr' : 'manual',
       started_at: startedAt,
     })
     .select()

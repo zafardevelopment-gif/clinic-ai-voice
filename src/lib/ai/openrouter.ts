@@ -47,9 +47,14 @@ export interface LlmCallOptions {
   withFallback?: boolean
 }
 
+/** Multimodal content part — only 'user' messages may use an array (vision input, e.g. prescription OCR). */
+export type LlmContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } }
+
 export interface LlmMessage {
   role: 'system' | 'user' | 'assistant'
-  content: string
+  content: string | LlmContentPart[]
 }
 
 export interface LlmResult {
@@ -75,7 +80,11 @@ export async function chatCompletion(
   const run = async (model: string): Promise<LlmResult> => {
     const response = await client.chat.completions.create({
       model,
-      messages,
+      // LlmMessage's role/content aren't correlated at the type level (unlike
+      // the SDK's discriminated union, where only 'user' messages allow array
+      // content) — callers already guarantee that contract, so this is a
+      // deliberate, narrow cast rather than a type hole.
+      messages: messages as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
       temperature: options.temperature ?? 0.3,
       max_tokens: options.maxTokens ?? 400,
     })

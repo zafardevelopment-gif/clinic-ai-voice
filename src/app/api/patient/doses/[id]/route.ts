@@ -2,15 +2,19 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { getPatientSession } from '@/lib/patient-auth'
 import type { DoseStatus } from '@/types/database'
+import { checkMissedDosePattern, raiseCareNavigatorFlag } from '@/lib/patient/care-navigator'
+import { notifyFamilyOfMissedDoses } from '@/lib/patient/family-alerts'
 
 const VALID_STATUSES: DoseStatus[] = ['taken', 'missed', 'skipped']
 
 /**
  * PATCH /api/patient/doses/:id — mark a dose taken/missed/skipped.
  *
- * Phase 1 only records the response. Family-alert escalation on repeated
- * missed doses (mirroring adherence_alerts' `repeated_missed` rule for
- * clinic follow_up_plans) is Phase 2 — see plan doc.
+ * On 'missed', checks for a repeated-missed pattern (3+ consecutive misses
+ * of the same medicine) and, if found, raises a Care Navigator flag for the
+ * patient AND notifies opted-in family contacts — mirroring how
+ * adherence_alerts' `repeated_missed` rule works for clinic follow_up_plans,
+ * but for the patient app's own medicine tracking.
  */
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getPatientSession(req)
@@ -39,5 +43,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     .single()
 
   if (error || !data) return NextResponse.json({ error: error?.message || 'Not found' }, { status: 404 })
+
+  if (status === 'missed') {
+    const pattern = await checkMissedDosePattern(db, session.patientId, data.patient_medicine_id)
+    if (pattern.triggered && pattern.severity) {
+      await raiseCareNavigatorFlag(db, {
+        patientId: session.patientId,
+        source: 'missed_doses',
+        severity: pattern.severity,
+        summary: pattern.summary,
+        suggestedAction: pattern.suggestedAction,
+      })
+
+      const { data: medicine } = await db.from('patient_medicines').select('medicine_name').eq('id', data.patient_medicine_id).maybeSingle()
+      await notifyFamilyOfMissedDoses(db, session.patientId, data.patient_medicine_id, medicine?.medicine_name || 'their medicine')
+    }
+  }
+
   return NextResponse.json(data)
 }

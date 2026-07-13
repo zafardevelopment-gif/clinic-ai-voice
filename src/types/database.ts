@@ -47,6 +47,11 @@ export type MedicineSource = 'manual' | 'ocr'
 export type DoseStatus = 'pending' | 'taken' | 'missed' | 'skipped'
 export type PatientSubscriptionStatus = 'none' | 'trialing' | 'active' | 'past_due' | 'cancelled'
 
+// ─── Patient App enums (migration 0010) ──────────────────────────────────────
+export type CareNavigatorSource = 'symptom_text' | 'lab_marker' | 'missed_doses'
+export type CareNavigatorSeverity = 'emergency' | 'urgent' | 'routine'
+export type CareNavigatorStatus = 'open' | 'acknowledged' | 'resolved'
+
 export interface Medicine {
   name: string
   dosage: string
@@ -1116,26 +1121,28 @@ export type Database = {
       lab_reports: {
         Row: {
           id: string
-          clinic_id: string
+          clinic_id: string | null
           patient_id: string
           appointment_id: string | null
           uploaded_file_url: string | null
           report_date: string | null
           lab_name: string | null
           entered_by: string | null
+          uploaded_by_patient_id: string | null
           status: LabReportStatus
           created_at: string
           updated_at: string
         }
         Insert: {
           id?: string
-          clinic_id: string
+          clinic_id?: string | null
           patient_id: string
           appointment_id?: string | null
           uploaded_file_url?: string | null
           report_date?: string | null
           lab_name?: string | null
           entered_by?: string | null
+          uploaded_by_patient_id?: string | null
           status?: LabReportStatus
           created_at?: string
           updated_at?: string
@@ -1150,7 +1157,8 @@ export type Database = {
         Relationships: [
           { foreignKeyName: 'lab_reports_clinic_id_fkey'; columns: ['clinic_id']; referencedRelation: 'clinics'; referencedColumns: ['id'] },
           { foreignKeyName: 'lab_reports_patient_id_fkey'; columns: ['patient_id']; referencedRelation: 'patients'; referencedColumns: ['id'] },
-          { foreignKeyName: 'lab_reports_appointment_id_fkey'; columns: ['appointment_id']; referencedRelation: 'appointments'; referencedColumns: ['id'] }
+          { foreignKeyName: 'lab_reports_appointment_id_fkey'; columns: ['appointment_id']; referencedRelation: 'appointments'; referencedColumns: ['id'] },
+          { foreignKeyName: 'lab_reports_uploaded_by_patient_id_fkey'; columns: ['uploaded_by_patient_id']; referencedRelation: 'patients'; referencedColumns: ['id'] }
         ]
       }
       lab_report_markers: {
@@ -1512,6 +1520,70 @@ export type Database = {
           { foreignKeyName: 'family_contacts_family_patient_id_fkey'; columns: ['family_patient_id']; referencedRelation: 'patients'; referencedColumns: ['id'] }
         ]
       }
+      care_navigator_flags: {
+        Row: {
+          id: string
+          patient_id: string
+          source: CareNavigatorSource
+          severity: CareNavigatorSeverity
+          summary: string
+          suggested_action: string
+          red_flags: string[]
+          related_lab_report_id: string | null
+          status: CareNavigatorStatus
+          created_at: string
+          resolved_at: string | null
+        }
+        Insert: {
+          id?: string
+          patient_id: string
+          source: CareNavigatorSource
+          severity: CareNavigatorSeverity
+          summary: string
+          suggested_action: string
+          red_flags?: string[]
+          related_lab_report_id?: string | null
+          status?: CareNavigatorStatus
+          created_at?: string
+          resolved_at?: string | null
+        }
+        Update: {
+          status?: CareNavigatorStatus
+          resolved_at?: string | null
+        }
+        Relationships: [
+          { foreignKeyName: 'care_navigator_flags_patient_id_fkey'; columns: ['patient_id']; referencedRelation: 'patients'; referencedColumns: ['id'] },
+          { foreignKeyName: 'care_navigator_flags_related_lab_report_id_fkey'; columns: ['related_lab_report_id']; referencedRelation: 'lab_reports'; referencedColumns: ['id'] }
+        ]
+      }
+      family_alerts: {
+        Row: {
+          id: string
+          family_contact_id: string
+          patient_id: string
+          patient_medicine_id: string | null
+          alert_type: string
+          sent_at: string
+          push_ok: boolean
+        }
+        Insert: {
+          id?: string
+          family_contact_id: string
+          patient_id: string
+          patient_medicine_id?: string | null
+          alert_type?: string
+          sent_at?: string
+          push_ok?: boolean
+        }
+        Update: {
+          push_ok?: boolean
+        }
+        Relationships: [
+          { foreignKeyName: 'family_alerts_family_contact_id_fkey'; columns: ['family_contact_id']; referencedRelation: 'family_contacts'; referencedColumns: ['id'] },
+          { foreignKeyName: 'family_alerts_patient_id_fkey'; columns: ['patient_id']; referencedRelation: 'patients'; referencedColumns: ['id'] },
+          { foreignKeyName: 'family_alerts_patient_medicine_id_fkey'; columns: ['patient_medicine_id']; referencedRelation: 'patient_medicines'; referencedColumns: ['id'] }
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -1567,6 +1639,8 @@ export type PatientDisease = Database['public']['Tables']['patient_diseases']['R
 export type PatientMedicine = Database['public']['Tables']['patient_medicines']['Row']
 export type PatientMedicineDose = Database['public']['Tables']['patient_medicine_doses']['Row']
 export type FamilyContact = Database['public']['Tables']['family_contacts']['Row']
+export type CareNavigatorFlag = Database['public']['Tables']['care_navigator_flags']['Row']
+export type FamilyAlert = Database['public']['Tables']['family_alerts']['Row']
 
 export interface HeroSlide {
   id: string
