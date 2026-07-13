@@ -9,11 +9,11 @@ export type SpeakerType = 'user' | 'ai'
 export type DomainStatus = 'unset' | 'pending' | 'verified' | 'error'
 
 // ─── Clinic OS module enums (migration 0005) ────────────────────────────────
-export type ReminderChannel = 'voice' | 'whatsapp' | 'sms'
+export type ReminderChannel = 'voice' | 'whatsapp' | 'sms' | 'push'
 export type ReminderEventType = 'scheduled' | 'sent' | 'delivered' | 'failed' | 'opened' | 'responded' | 'cancelled'
 export type FollowUpPlanStatus = 'active' | 'completed' | 'cancelled'
 export type AdherenceResponse = 'taken' | 'missed' | 'feeling_better' | 'side_effects' | 'call_me' | 'no_response'
-export type AdherenceChannel = 'voice' | 'whatsapp' | 'sms' | 'staff'
+export type AdherenceChannel = 'voice' | 'whatsapp' | 'sms' | 'staff' | 'push'
 export type AdherenceAlertType = 'repeated_missed' | 'side_effects' | 'callback_requested'
 export type AdherenceAlertStatus = 'open' | 'acknowledged' | 'resolved'
 export type TriageSource = 'website' | 'counter' | 'voice_followup'
@@ -27,6 +27,25 @@ export type LabNextActionCategory = 'routine_review' | 'discuss_soon' | 'urgent_
 // ─── Clinic Ledger enums (migration 0006) ────────────────────────────────────
 export type LedgerEntryType = 'patient_collection' | 'patient_refund' | 'staff_expense' | 'clinic_expense' | 'other'
 export type LedgerPaymentMethod = 'cash' | 'card' | 'upi' | 'bank_transfer' | 'other'
+
+// ─── Clinic Invoicing enums (migration 0008) ─────────────────────────────────
+export type InvoiceStatus = 'issued' | 'cancelled'
+
+export interface InvoicePartySnapshot {
+  name: string
+  address?: string | null
+  city?: string | null
+  state?: string | null
+  pincode?: string | null
+  gstin?: string | null
+  phone?: string | null
+  email?: string | null
+}
+
+// ─── Patient App enums (migration 0009) ──────────────────────────────────────
+export type MedicineSource = 'manual' | 'ocr'
+export type DoseStatus = 'pending' | 'taken' | 'missed' | 'skipped'
+export type PatientSubscriptionStatus = 'none' | 'trialing' | 'active' | 'past_due' | 'cancelled'
 
 export interface Medicine {
   name: string
@@ -105,6 +124,10 @@ export type Database = {
           domain_verification: Json
           domain_added_at: string | null
           domain_checked_at: string | null
+          gstin: string | null
+          state: string | null
+          pincode: string | null
+          invoice_prefix: string
           created_at: string
           updated_at: string
         }
@@ -131,6 +154,10 @@ export type Database = {
           domain_verification?: Json
           domain_added_at?: string | null
           domain_checked_at?: string | null
+          gstin?: string | null
+          state?: string | null
+          pincode?: string | null
+          invoice_prefix?: string
           created_at?: string
           updated_at?: string
         }
@@ -156,6 +183,10 @@ export type Database = {
           domain_verification?: Json
           domain_added_at?: string | null
           domain_checked_at?: string | null
+          gstin?: string | null
+          state?: string | null
+          pincode?: string | null
+          invoice_prefix?: string
           updated_at?: string
         }
         Relationships: []
@@ -284,7 +315,7 @@ export type Database = {
       patients: {
         Row: {
           id: string
-          clinic_id: string
+          clinic_id: string | null
           full_name: string
           phone: string | null
           email: string | null
@@ -292,12 +323,19 @@ export type Database = {
           gender: string | null
           address: string | null
           notes: string | null
+          gstin: string | null
+          state: string | null
+          password_hash: string | null
+          is_independent: boolean
+          subscription_status: PatientSubscriptionStatus
+          expo_push_token: string | null
+          last_login_at: string | null
           created_at: string
           updated_at: string
         }
         Insert: {
           id?: string
-          clinic_id: string
+          clinic_id?: string | null
           full_name: string
           phone?: string | null
           email?: string | null
@@ -305,6 +343,13 @@ export type Database = {
           gender?: string | null
           address?: string | null
           notes?: string | null
+          gstin?: string | null
+          state?: string | null
+          password_hash?: string | null
+          is_independent?: boolean
+          subscription_status?: PatientSubscriptionStatus
+          expo_push_token?: string | null
+          last_login_at?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -316,6 +361,13 @@ export type Database = {
           gender?: string | null
           address?: string | null
           notes?: string | null
+          gstin?: string | null
+          state?: string | null
+          password_hash?: string | null
+          is_independent?: boolean
+          subscription_status?: PatientSubscriptionStatus
+          expo_push_token?: string | null
+          last_login_at?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -1229,6 +1281,237 @@ export type Database = {
           { foreignKeyName: 'clinic_ledger_entries_related_entry_id_fkey'; columns: ['related_entry_id']; referencedRelation: 'clinic_ledger_entries'; referencedColumns: ['id'] }
         ]
       }
+      clinic_invoices: {
+        Row: {
+          id: string
+          clinic_id: string
+          invoice_number: string
+          invoice_date: string
+          patient_id: string | null
+          ledger_entry_id: string | null
+          seller_snapshot: Json
+          buyer_snapshot: Json
+          subtotal_paise: number
+          cgst_paise: number
+          sgst_paise: number
+          igst_paise: number
+          total_paise: number
+          is_interstate: boolean
+          notes: string | null
+          status: InvoiceStatus
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          clinic_id: string
+          invoice_number: string
+          invoice_date?: string
+          patient_id?: string | null
+          ledger_entry_id?: string | null
+          seller_snapshot: Json
+          buyer_snapshot: Json
+          subtotal_paise?: number
+          cgst_paise?: number
+          sgst_paise?: number
+          igst_paise?: number
+          total_paise?: number
+          is_interstate?: boolean
+          notes?: string | null
+          status?: InvoiceStatus
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          invoice_date?: string
+          patient_id?: string | null
+          seller_snapshot?: Json
+          buyer_snapshot?: Json
+          subtotal_paise?: number
+          cgst_paise?: number
+          sgst_paise?: number
+          igst_paise?: number
+          total_paise?: number
+          is_interstate?: boolean
+          notes?: string | null
+          status?: InvoiceStatus
+          updated_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: 'clinic_invoices_clinic_id_fkey'; columns: ['clinic_id']; referencedRelation: 'clinics'; referencedColumns: ['id'] },
+          { foreignKeyName: 'clinic_invoices_patient_id_fkey'; columns: ['patient_id']; referencedRelation: 'patients'; referencedColumns: ['id'] },
+          { foreignKeyName: 'clinic_invoices_ledger_entry_id_fkey'; columns: ['ledger_entry_id']; referencedRelation: 'clinic_ledger_entries'; referencedColumns: ['id'] }
+        ]
+      }
+      clinic_invoice_items: {
+        Row: {
+          id: string
+          invoice_id: string
+          description: string
+          quantity: number
+          rate_paise: number
+          gst_rate_percent: number
+          amount_paise: number
+          sort_order: number
+        }
+        Insert: {
+          id?: string
+          invoice_id: string
+          description: string
+          quantity?: number
+          rate_paise: number
+          gst_rate_percent?: number
+          amount_paise: number
+          sort_order?: number
+        }
+        Update: {
+          description?: string
+          quantity?: number
+          rate_paise?: number
+          gst_rate_percent?: number
+          amount_paise?: number
+          sort_order?: number
+        }
+        Relationships: [
+          { foreignKeyName: 'clinic_invoice_items_invoice_id_fkey'; columns: ['invoice_id']; referencedRelation: 'clinic_invoices'; referencedColumns: ['id'] }
+        ]
+      }
+      patient_diseases: {
+        Row: {
+          id: string
+          patient_id: string
+          condition_name: string
+          diagnosed_date: string | null
+          notes: string | null
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          patient_id: string
+          condition_name: string
+          diagnosed_date?: string | null
+          notes?: string | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          condition_name?: string
+          diagnosed_date?: string | null
+          notes?: string | null
+          is_active?: boolean
+          updated_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: 'patient_diseases_patient_id_fkey'; columns: ['patient_id']; referencedRelation: 'patients'; referencedColumns: ['id'] }
+        ]
+      }
+      patient_medicines: {
+        Row: {
+          id: string
+          patient_id: string
+          medicine_name: string
+          dosage: string | null
+          frequency: string
+          duration_days: number | null
+          times_of_day: string[]
+          source: MedicineSource
+          source_follow_up_plan_id: string | null
+          is_active: boolean
+          started_at: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          patient_id: string
+          medicine_name: string
+          dosage?: string | null
+          frequency: string
+          duration_days?: number | null
+          times_of_day?: string[]
+          source?: MedicineSource
+          source_follow_up_plan_id?: string | null
+          is_active?: boolean
+          started_at?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          medicine_name?: string
+          dosage?: string | null
+          frequency?: string
+          duration_days?: number | null
+          times_of_day?: string[]
+          is_active?: boolean
+          updated_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: 'patient_medicines_patient_id_fkey'; columns: ['patient_id']; referencedRelation: 'patients'; referencedColumns: ['id'] },
+          { foreignKeyName: 'patient_medicines_source_follow_up_plan_id_fkey'; columns: ['source_follow_up_plan_id']; referencedRelation: 'follow_up_plans'; referencedColumns: ['id'] }
+        ]
+      }
+      patient_medicine_doses: {
+        Row: {
+          id: string
+          patient_medicine_id: string
+          patient_id: string
+          scheduled_at: string
+          status: DoseStatus
+          responded_at: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          patient_medicine_id: string
+          patient_id: string
+          scheduled_at: string
+          status?: DoseStatus
+          responded_at?: string | null
+          created_at?: string
+        }
+        Update: {
+          status?: DoseStatus
+          responded_at?: string | null
+        }
+        Relationships: [
+          { foreignKeyName: 'patient_medicine_doses_patient_medicine_id_fkey'; columns: ['patient_medicine_id']; referencedRelation: 'patient_medicines'; referencedColumns: ['id'] },
+          { foreignKeyName: 'patient_medicine_doses_patient_id_fkey'; columns: ['patient_id']; referencedRelation: 'patients'; referencedColumns: ['id'] }
+        ]
+      }
+      family_contacts: {
+        Row: {
+          id: string
+          patient_id: string
+          family_patient_id: string
+          relationship: string | null
+          alert_on_missed_dose: boolean
+          invited_at: string
+          accepted_at: string | null
+        }
+        Insert: {
+          id?: string
+          patient_id: string
+          family_patient_id: string
+          relationship?: string | null
+          alert_on_missed_dose?: boolean
+          invited_at?: string
+          accepted_at?: string | null
+        }
+        Update: {
+          relationship?: string | null
+          alert_on_missed_dose?: boolean
+          accepted_at?: string | null
+        }
+        Relationships: [
+          { foreignKeyName: 'family_contacts_patient_id_fkey'; columns: ['patient_id']; referencedRelation: 'patients'; referencedColumns: ['id'] },
+          { foreignKeyName: 'family_contacts_family_patient_id_fkey'; columns: ['family_patient_id']; referencedRelation: 'patients'; referencedColumns: ['id'] }
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -1278,6 +1561,12 @@ export type LabReport = Database['public']['Tables']['lab_reports']['Row']
 export type LabReportMarker = Database['public']['Tables']['lab_report_markers']['Row']
 export type LabExplanation = Database['public']['Tables']['lab_explanations']['Row']
 export type ClinicLedgerEntry = Database['public']['Tables']['clinic_ledger_entries']['Row']
+export type ClinicInvoice = Database['public']['Tables']['clinic_invoices']['Row']
+export type ClinicInvoiceItem = Database['public']['Tables']['clinic_invoice_items']['Row']
+export type PatientDisease = Database['public']['Tables']['patient_diseases']['Row']
+export type PatientMedicine = Database['public']['Tables']['patient_medicines']['Row']
+export type PatientMedicineDose = Database['public']['Tables']['patient_medicine_doses']['Row']
+export type FamilyContact = Database['public']['Tables']['family_contacts']['Row']
 
 export interface HeroSlide {
   id: string

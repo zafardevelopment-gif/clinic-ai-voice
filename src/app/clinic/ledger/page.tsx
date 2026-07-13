@@ -9,6 +9,7 @@ import StatCard from '@/components/ui/StatCard'
 import DataTable from '@/components/ui/DataTable'
 import { FormField, AppInput, AppSelect, AppTextarea } from '@/components/ui/FormField'
 import PatientSearchSelect, { type PatientOption } from '@/components/clinic/PatientSearchSelect'
+import GenerateInvoiceModal from '@/components/clinic/GenerateInvoiceModal'
 
 type EntryType = 'patient_collection' | 'patient_refund' | 'staff_expense' | 'clinic_expense' | 'other'
 
@@ -20,6 +21,7 @@ interface LedgerEntry {
   payment_method: string | null
   note: string | null
   entry_date: string
+  patient_id?: string | null
   patients: { full_name: string; phone: string | null } | null
 }
 
@@ -66,6 +68,14 @@ export default function LedgerPage() {
   const [entryDate, setEntryDate] = useState(new Date().toISOString().slice(0, 10))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+
+  const [invoiceModalOpen, setInvoiceModalOpen] = useState(false)
+  const [invoiceSourceEntry, setInvoiceSourceEntry] = useState<LedgerEntry | null>(null)
+
+  function openInvoiceFor(entry: LedgerEntry) {
+    setInvoiceSourceEntry(entry)
+    setInvoiceModalOpen(true)
+  }
 
   async function load() {
     setLoading(true)
@@ -214,6 +224,13 @@ export default function LedgerPage() {
                     ) },
                     { key: 'payment_method', header: 'Method', render: (r) => <span className="capitalize text-xs" style={{ color: 'var(--txt2)' }}>{r.payment_method || '—'}</span> },
                     { key: 'note', header: 'Note' },
+                    {
+                      key: 'actions', header: '', render: (r) => (
+                        r.entry_type === 'patient_collection' ? (
+                          <AppBtn size="sm" variant="secondary" icon="🧾" onClick={() => openInvoiceFor(r)}>Invoice</AppBtn>
+                        ) : null
+                      ),
+                    },
                   ]}
                   data={entries}
                 />
@@ -309,6 +326,16 @@ export default function LedgerPage() {
           </FormField>
         </div>
       </AppModal>
+
+      <GenerateInvoiceModal
+        open={invoiceModalOpen}
+        onClose={() => setInvoiceModalOpen(false)}
+        onCreated={id => window.open(`/api/clinic/invoices/${id}/print`, '_blank')}
+        presetPatientId={invoiceSourceEntry?.patient_id || null}
+        presetLedgerEntryId={invoiceSourceEntry?.id || null}
+        presetAmount={invoiceSourceEntry ? invoiceSourceEntry.amount_paise / 100 : null}
+        presetDescription={invoiceSourceEntry?.note || 'Consultation fee'}
+      />
     </div>
   )
 }

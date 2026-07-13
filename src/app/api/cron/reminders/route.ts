@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database'
 import { dispatchReminder } from '@/lib/reminders/dispatch'
+import { dispatchDueDoseReminders } from '@/lib/patient/dispatch-dose-reminders'
 
 /**
  * GET /api/cron/reminders
@@ -38,6 +39,7 @@ export async function GET(req: NextRequest) {
   const enqueued = await enqueueUpcoming(db)
   const followUpsEnqueued = await enqueueFollowUps(db)
   const dispatched = await dispatchDue(db)
+  const patientDoseReminders = await dispatchDueDoseReminders(db)
 
   return NextResponse.json({
     ok: true,
@@ -45,6 +47,7 @@ export async function GET(req: NextRequest) {
     followUpsEnqueued,
     dispatched: dispatched.length,
     results: dispatched,
+    patientDoseReminders,
   })
 }
 

@@ -103,12 +103,19 @@ const clinicNav: NavSection[] = [
       { icon: '🩺', label: 'Symptom Triage', href: '/clinic/triage' },
       { icon: '🧪', label: 'Lab Reports', href: '/clinic/lab-reports' },
       { icon: '💵', label: 'Ledger', href: '/clinic/ledger' },
+      { icon: '🧾', label: 'Invoices', href: '/clinic/invoices' },
     ],
   },
   {
     label: 'Website',
     items: [
       { icon: '🌐', label: 'My Website', href: '/clinic/website' },
+    ],
+  },
+  {
+    label: 'Account',
+    items: [
+      { icon: '⚙️', label: 'Clinic Settings', href: '/clinic/settings' },
     ],
   },
 ]
