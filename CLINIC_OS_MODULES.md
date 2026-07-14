@@ -153,6 +153,16 @@ direct DB insert with the desired `role` and (for doctor) `users.doctor_id`
 linking to their `doctors` row. **Assumption flagged**: a self-serve
 "invite staff with role" UI is a natural fast-follow, not built in this pass.
 
+**ASHA worker (migration 0011, schema only)**: `user_role` also has an
+`asha` value and a standalone `asha_profiles` table (community health
+worker: name, phone, region, optional `linked_clinic_id`). `patients` gained
+`patient_code` (human-readable Patient ID, e.g. `AVX-PT-000123`, nullable/
+unique) and `created_by_asha` (attributes a patient record to the ASHA
+worker who registered it). **This is data model only** — no login/signup
+flow, no session handling, and no route checks for the `asha` role exist
+yet. ASHA auth is intentionally deferred to a later pass covering auth for
+all roles together.
+
 ### Notifications (WhatsApp/SMS)
 
 `src/lib/notify/` mirrors the existing `src/lib/telephony/` provider

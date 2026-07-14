@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { getPatientSession } from '@/lib/patient-auth'
+import { generatePatientCode } from '@/lib/patient/patient-code'
 
 /**
  * GET /api/patient/profile   own profile
@@ -13,11 +14,19 @@ export async function GET(req: NextRequest) {
   const db = getDb()
   const { data, error } = await db
     .from('patients')
-    .select('id, full_name, email, phone, date_of_birth, gender, address, is_independent, subscription_status, clinic_id')
+    .select('id, full_name, email, phone, date_of_birth, gender, address, is_independent, subscription_status, clinic_id, patient_code')
     .eq('id', session.patientId)
     .single()
 
   if (error || !data) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  // Backfill for patients created before patient_code existed.
+  if (!data.patient_code) {
+    const patientCode = await generatePatientCode(db)
+    await db.from('patients').update({ patient_code: patientCode }).eq('id', data.id)
+    data.patient_code = patientCode
+  }
+
   return NextResponse.json(data)
 }
 

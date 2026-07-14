@@ -142,6 +142,84 @@ Respond with JSON: { "patientSummaryEn": string (plain English, 3-5 sentences), 
   return { system, user }
 }
 
+// ─── Doctor Co-Pilot prompts (spec §7A) ─────────────────────────────────────
+// Different guardrail posture from GUARDRAIL_INSTRUCTIONS above: this assists
+// an already-licensed doctor, not a patient, so differential/test/medication
+// suggestions ARE allowed — but only ever as advisory suggestions requiring
+// explicit doctor Accept/Edit/Reject, never as a directive, and medications
+// must be drawn only from the supplied formulary reference (never invented).
+
+export const COPILOT_DISCLAIMER =
+  'AI Suggestion — not a directive. Final clinical decision and legal responsibility rest with the treating physician.'
+
+const COPILOT_GUARDRAIL_INSTRUCTIONS = `
+Rules you must follow:
+- You are assisting a LICENSED DOCTOR during a live consultation, not a patient. The doctor remains fully responsible for all decisions.
+- Never phrase a suggestion as an instruction or a confirmed fact. Every item must read as a possibility requiring physician confirmation.
+- Prioritize red-flag/emergency screening questions first when suggesting follow-up questions.
+- For medications: choose ONLY from the formulary reference list provided. Never invent a drug, dosage, or brand not present in that list. If nothing in the list fits, say so explicitly instead of guessing.
+- Output must be valid JSON only, matching the schema given. No markdown fences, no extra commentary.
+`.trim()
+
+export function buildCopilotQuestionsPrompt(args: {
+  presentingComplaint: string
+  qaSoFar: Array<{ question: string; answer: string }>
+}): { system: string; user: string } {
+  const system = `You are a clinical decision-support assistant helping a doctor during a live consultation. ${COPILOT_GUARDRAIL_INSTRUCTIONS}
+
+Given the presenting complaint and the Q&A so far, suggest 2-5 relevant follow-up questions the doctor may want to ask next. Do not repeat a question already asked.
+
+Respond with JSON: { "questions": [{ "question": string, "priority": "red_flag" | "routine" }] }`
+
+  const qaText = args.qaSoFar.length
+    ? args.qaSoFar.map(qa => `Q: ${qa.question}\nA: ${qa.answer}`).join('\n\n')
+    : '(none yet)'
+
+  const user = `Presenting complaint: ${args.presentingComplaint}
+
+Q&A so far:
+${qaText}`
+
+  return { system, user }
+}
+
+export function buildCopilotSuggestionsPrompt(args: {
+  presentingComplaint: string
+  qaSoFar: Array<{ question: string; answer: string }>
+  formulary: Array<{ id: string; drugName: string; drugClass: string | null; dosageRange: string; sourceReference: string }>
+}): { system: string; user: string } {
+  const system = `You are a clinical decision-support assistant helping a doctor conclude a live consultation. ${COPILOT_GUARDRAIL_INSTRUCTIONS}
+
+Generate:
+(a) a ranked list of possible differential considerations (never state one as confirmed)
+(b) suggested tests/investigations, each with a one-line reason
+(c) suggested medications ONLY from the formulary list given below — reference each by its exact "id" from that list. If any red-flag/emergency symptom is present anywhere in the complaint or Q&A, surface it at the top of the differential list with an urgent-review flag regardless of what stage the consultation is at.
+
+Respond with JSON: {
+  "diagnoses": [{ "condition": string, "confidenceNote": string }],
+  "tests": [{ "testName": string, "reason": string }],
+  "medications": [{ "formularyId": string, "note": string }]
+}`
+
+  const qaText = args.qaSoFar.length
+    ? args.qaSoFar.map(qa => `Q: ${qa.question}\nA: ${qa.answer}`).join('\n\n')
+    : '(none)'
+
+  const formularyText = args.formulary
+    .map(f => `- id: ${f.id} | ${f.drugName}${f.drugClass ? ` (${f.drugClass})` : ''} | ${f.dosageRange} | source: ${f.sourceReference}`)
+    .join('\n')
+
+  const user = `Presenting complaint: ${args.presentingComplaint}
+
+Q&A:
+${qaText}
+
+Formulary reference (choose medications ONLY from this list, if any fit):
+${formularyText || '(no formulary entries available — do not suggest any medication)'}`
+
+  return { system, user }
+}
+
 export function buildAdherenceMessagePrompt(args: {
   patientName: string
   medicines: Array<{ name: string; dosage: string; frequency: string }>

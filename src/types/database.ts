@@ -1,6 +1,6 @@
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
 
-export type UserRole = 'admin' | 'clinic_admin' | 'doctor' | 'receptionist'
+export type UserRole = 'admin' | 'clinic_admin' | 'doctor' | 'receptionist' | 'asha'
 export type MediaType = 'image' | 'video'
 export type CallType = 'booking' | 'query' | 'followup'
 export type CallOutcome = 'booked' | 'not_booked' | 'callback' | 'transferred'
@@ -51,6 +51,77 @@ export type PatientSubscriptionStatus = 'none' | 'trialing' | 'active' | 'past_d
 export type CareNavigatorSource = 'symptom_text' | 'lab_marker' | 'missed_doses'
 export type CareNavigatorSeverity = 'emergency' | 'urgent' | 'routine'
 export type CareNavigatorStatus = 'open' | 'acknowledged' | 'resolved'
+
+// ─── ASHA role (migration 0011, schema only — no auth yet) ──────────────────
+// See asha_profiles Table below for row shape.
+
+// ─── Doctor Co-Pilot (migration 0012) ────────────────────────────────────────
+export type TriageMode = 'patient_intake' | 'doctor_copilot'
+export type SuggestionStatus = 'pending' | 'accepted' | 'edited' | 'rejected'
+
+export interface CopilotQaLogEntry {
+  question: string
+  answer: string
+  source: 'ai_suggested' | 'doctor_added'
+  answered_at: string
+}
+
+export interface CopilotSuggestedQuestion {
+  question: string
+  priority: 'red_flag' | 'routine'
+}
+
+export interface CopilotSuggestedDiagnosis {
+  condition: string
+  confidence_note: string
+  status: SuggestionStatus
+}
+
+export interface CopilotSuggestedTest {
+  test_name: string
+  reason: string
+  status: SuggestionStatus
+}
+
+export interface CopilotSuggestedMedication {
+  formulary_id: string
+  drug: string
+  dosage_range: string
+  source_reference: string
+  note: string
+  status: SuggestionStatus
+}
+
+export interface CopilotFinalPrescriptionItem {
+  drug: string
+  dosage: string
+  frequency: string
+  duration_days: number | null
+  formulary_id: string | null
+}
+
+// ─── Patient Media / Prescription OCR + Visual Analysis (migration 0013) ────
+export type PatientMediaType = 'prescription_photo' | 'condition_photo' | 'condition_video'
+export type PatientMediaUploader = 'doctor' | 'patient' | 'asha'
+
+export interface ExtractedPrescriptionData {
+  medicines: Array<{
+    medicine_name: string
+    dosage: string | null
+    frequency: string | null
+    duration_days: number | null
+    times_of_day: string[]
+    raw_text_matched: string
+  }>
+  warnings: string[]
+}
+
+export interface ExtractedVisualData {
+  description: string
+  differential_considerations: string[] | null
+  confidence_note: string | null
+  warnings: string[]
+}
 
 export interface Medicine {
   name: string
@@ -335,6 +406,8 @@ export type Database = {
           subscription_status: PatientSubscriptionStatus
           expo_push_token: string | null
           last_login_at: string | null
+          patient_code: string | null
+          created_by_asha: string | null
           created_at: string
           updated_at: string
         }
@@ -355,10 +428,13 @@ export type Database = {
           subscription_status?: PatientSubscriptionStatus
           expo_push_token?: string | null
           last_login_at?: string | null
+          patient_code?: string | null
+          created_by_asha?: string | null
           created_at?: string
           updated_at?: string
         }
         Update: {
+          clinic_id?: string | null
           full_name?: string
           phone?: string | null
           email?: string | null
@@ -373,10 +449,46 @@ export type Database = {
           subscription_status?: PatientSubscriptionStatus
           expo_push_token?: string | null
           last_login_at?: string | null
+          patient_code?: string | null
+          created_by_asha?: string | null
           updated_at?: string
         }
         Relationships: [
-          { foreignKeyName: 'patients_clinic_id_fkey'; columns: ['clinic_id']; referencedRelation: 'clinics'; referencedColumns: ['id'] }
+          { foreignKeyName: 'patients_clinic_id_fkey'; columns: ['clinic_id']; referencedRelation: 'clinics'; referencedColumns: ['id'] },
+          { foreignKeyName: 'patients_created_by_asha_fkey'; columns: ['created_by_asha']; referencedRelation: 'asha_profiles'; referencedColumns: ['id'] }
+        ]
+      }
+      asha_profiles: {
+        Row: {
+          id: string
+          full_name: string
+          phone: string | null
+          region: string | null
+          linked_clinic_id: string | null
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          full_name: string
+          phone?: string | null
+          region?: string | null
+          linked_clinic_id?: string | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          full_name?: string
+          phone?: string | null
+          region?: string | null
+          linked_clinic_id?: string | null
+          is_active?: boolean
+          updated_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: 'asha_profiles_linked_clinic_id_fkey'; columns: ['linked_clinic_id']; referencedRelation: 'clinics'; referencedColumns: ['id'] }
         ]
       }
       appointments: {
@@ -1009,7 +1121,8 @@ export type Database = {
           clinic_id: string
           patient_id: string | null
           appointment_id: string | null
-          source: TriageSource
+          source: TriageSource | 'doctor_copilot'
+          mode: TriageMode
           age_group: TriageAgeGroup | null
           status: TriageSessionStatus
           created_by: string | null
@@ -1020,7 +1133,8 @@ export type Database = {
           clinic_id: string
           patient_id?: string | null
           appointment_id?: string | null
-          source: TriageSource
+          source: TriageSource | 'doctor_copilot'
+          mode?: TriageMode
           age_group?: TriageAgeGroup | null
           status?: TriageSessionStatus
           created_by?: string | null
@@ -1047,6 +1161,7 @@ export type Database = {
           current_medicines: string[]
           red_flags: string[]
           raw_answers: Json
+          qa_log: CopilotQaLogEntry[]
         }
         Insert: {
           id?: string
@@ -1059,6 +1174,7 @@ export type Database = {
           current_medicines?: string[]
           red_flags?: string[]
           raw_answers?: Json
+          qa_log?: CopilotQaLogEntry[]
         }
         Update: {
           duration?: string | null
@@ -1068,6 +1184,7 @@ export type Database = {
           current_medicines?: string[]
           red_flags?: string[]
           raw_answers?: Json
+          qa_log?: CopilotQaLogEntry[]
         }
         Relationships: [
           { foreignKeyName: 'triage_answers_session_id_fkey'; columns: ['session_id']; referencedRelation: 'symptom_triage_sessions'; referencedColumns: ['id'] }
@@ -1087,6 +1204,16 @@ export type Database = {
           reviewed_by: string | null
           reviewed_at: string | null
           created_at: string
+          ai_suggested_questions: CopilotSuggestedQuestion[]
+          ai_suggested_diagnoses: CopilotSuggestedDiagnosis[]
+          ai_suggested_tests: CopilotSuggestedTest[]
+          ai_suggested_medications: CopilotSuggestedMedication[]
+          doctor_final_diagnosis: string | null
+          doctor_final_prescription: CopilotFinalPrescriptionItem[] | null
+          ai_suggestions_accepted_count: number
+          ai_suggestions_total_count: number
+          finalized_at: string | null
+          finalized_by: string | null
         }
         Insert: {
           id?: string
@@ -1101,6 +1228,16 @@ export type Database = {
           reviewed_by?: string | null
           reviewed_at?: string | null
           created_at?: string
+          ai_suggested_questions?: CopilotSuggestedQuestion[]
+          ai_suggested_diagnoses?: CopilotSuggestedDiagnosis[]
+          ai_suggested_tests?: CopilotSuggestedTest[]
+          ai_suggested_medications?: CopilotSuggestedMedication[]
+          doctor_final_diagnosis?: string | null
+          doctor_final_prescription?: CopilotFinalPrescriptionItem[] | null
+          ai_suggestions_accepted_count?: number
+          ai_suggestions_total_count?: number
+          finalized_at?: string | null
+          finalized_by?: string | null
         }
         Update: {
           category?: TriageCategory
@@ -1108,15 +1245,60 @@ export type Database = {
           doctor_notes?: string | null
           suggested_department_id?: string | null
           suggested_doctor_id?: string | null
+          ai_model?: string | null
           is_ai_edited?: boolean
           reviewed_by?: string | null
           reviewed_at?: string | null
+          ai_suggested_questions?: CopilotSuggestedQuestion[]
+          ai_suggested_diagnoses?: CopilotSuggestedDiagnosis[]
+          ai_suggested_tests?: CopilotSuggestedTest[]
+          ai_suggested_medications?: CopilotSuggestedMedication[]
+          doctor_final_diagnosis?: string | null
+          doctor_final_prescription?: CopilotFinalPrescriptionItem[] | null
+          ai_suggestions_accepted_count?: number
+          ai_suggestions_total_count?: number
+          finalized_at?: string | null
+          finalized_by?: string | null
         }
         Relationships: [
           { foreignKeyName: 'triage_results_session_id_fkey'; columns: ['session_id']; referencedRelation: 'symptom_triage_sessions'; referencedColumns: ['id'] },
           { foreignKeyName: 'triage_results_suggested_department_id_fkey'; columns: ['suggested_department_id']; referencedRelation: 'departments'; referencedColumns: ['id'] },
           { foreignKeyName: 'triage_results_suggested_doctor_id_fkey'; columns: ['suggested_doctor_id']; referencedRelation: 'doctors'; referencedColumns: ['id'] }
         ]
+      }
+      formulary_medications: {
+        Row: {
+          id: string
+          drug_name: string
+          drug_class: string | null
+          indication_keywords: string[]
+          dosage_range: string
+          source_reference: string
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          drug_name: string
+          drug_class?: string | null
+          indication_keywords?: string[]
+          dosage_range: string
+          source_reference: string
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          drug_name?: string
+          drug_class?: string | null
+          indication_keywords?: string[]
+          dosage_range?: string
+          source_reference?: string
+          is_active?: boolean
+          updated_at?: string
+        }
+        Relationships: []
       }
       lab_reports: {
         Row: {
@@ -1195,6 +1377,54 @@ export type Database = {
         }
         Relationships: [
           { foreignKeyName: 'lab_report_markers_lab_report_id_fkey'; columns: ['lab_report_id']; referencedRelation: 'lab_reports'; referencedColumns: ['id'] }
+        ]
+      }
+      patient_media: {
+        Row: {
+          id: string
+          clinic_id: string | null
+          patient_id: string | null
+          triage_session_id: string | null
+          uploaded_by: PatientMediaUploader
+          uploaded_by_user_id: string | null
+          uploaded_by_patient_id: string | null
+          media_type: PatientMediaType
+          file_url: string
+          ai_extracted_data: ExtractedPrescriptionData | ExtractedVisualData | null
+          ai_model: string | null
+          doctor_confirmed: boolean
+          confirmed_by: string | null
+          confirmed_at: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          clinic_id?: string | null
+          patient_id?: string | null
+          triage_session_id?: string | null
+          uploaded_by: PatientMediaUploader
+          uploaded_by_user_id?: string | null
+          uploaded_by_patient_id?: string | null
+          media_type: PatientMediaType
+          file_url: string
+          ai_extracted_data?: ExtractedPrescriptionData | ExtractedVisualData | null
+          ai_model?: string | null
+          doctor_confirmed?: boolean
+          confirmed_by?: string | null
+          confirmed_at?: string | null
+          created_at?: string
+        }
+        Update: {
+          ai_extracted_data?: ExtractedPrescriptionData | ExtractedVisualData | null
+          ai_model?: string | null
+          doctor_confirmed?: boolean
+          confirmed_by?: string | null
+          confirmed_at?: string | null
+        }
+        Relationships: [
+          { foreignKeyName: 'patient_media_clinic_id_fkey'; columns: ['clinic_id']; referencedRelation: 'clinics'; referencedColumns: ['id'] },
+          { foreignKeyName: 'patient_media_patient_id_fkey'; columns: ['patient_id']; referencedRelation: 'patients'; referencedColumns: ['id'] },
+          { foreignKeyName: 'patient_media_triage_session_id_fkey'; columns: ['triage_session_id']; referencedRelation: 'symptom_triage_sessions'; referencedColumns: ['id'] }
         ]
       }
       lab_explanations: {

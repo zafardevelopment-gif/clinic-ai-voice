@@ -30,6 +30,7 @@ const adminNav: NavSection[] = [
       { icon: '🏥', label: 'Clinics', href: '/admin/clinics' },
       { icon: '👨‍⚕️', label: 'Doctors', href: '/admin/doctors' },
       { icon: '📊', label: 'Analytics', href: '/admin/analytics' },
+      { icon: '🧾', label: 'AI Co-Pilot Audit', href: '/admin/copilot-audit' },
     ],
   },
   {

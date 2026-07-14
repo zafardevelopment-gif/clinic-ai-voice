@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
 import { getDb } from '@/lib/db'
 import { signPatientAccessToken, signPatientRefreshToken } from '@/lib/patient-auth'
+import { generatePatientCode } from '@/lib/patient/patient-code'
 
 /**
  * POST /api/patient/auth/signup — self-registration for an independent
@@ -33,7 +34,10 @@ export async function POST(req: NextRequest) {
     .maybeSingle()
   if (existing) return NextResponse.json({ error: 'An account with this email already exists' }, { status: 409 })
 
-  const passwordHash = await bcrypt.hash(password, 10)
+  const [passwordHash, patientCode] = await Promise.all([
+    bcrypt.hash(password, 10),
+    generatePatientCode(db),
+  ])
 
   const { data: patient, error } = await db
     .from('patients')
@@ -43,8 +47,9 @@ export async function POST(req: NextRequest) {
       password_hash: passwordHash,
       is_independent: true,
       clinic_id: null,
+      patient_code: patientCode,
     })
-    .select('id, email, full_name')
+    .select('id, email, full_name, patient_code')
     .single()
 
   if (error || !patient) return NextResponse.json({ error: error?.message || 'Failed to create account' }, { status: 500 })
@@ -57,6 +62,6 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     accessToken,
     refreshToken,
-    patient: { id: patient.id, email: patient.email, full_name: patient.full_name },
+    patient: { id: patient.id, email: patient.email, full_name: patient.full_name, patient_code: patient.patient_code },
   }, { status: 201 })
 }
