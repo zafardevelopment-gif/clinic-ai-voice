@@ -41,7 +41,7 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(new URL('/clinic/dashboard', request.url))
   }
 
-  if (path.startsWith('/clinic') && session.role !== 'clinic_admin') {
+  if (path.startsWith('/clinic') && !['clinic_admin', 'doctor', 'receptionist'].includes(session.role)) {
     return NextResponse.redirect(new URL('/admin/dashboard', request.url))
   }
 
