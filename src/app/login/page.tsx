@@ -27,21 +27,27 @@ export default function LoginPage() {
     setLoading(true)
     setError('')
 
-    const res = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-    })
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      })
 
-    const data = await res.json()
+      const data = await res.json()
 
-    if (!res.ok) {
-      setError(data.error || 'Login failed')
+      if (!res.ok) {
+        setError(data.error || 'Login failed')
+        setLoading(false)
+        return
+      }
+
+      router.push(data.redirectTo)
+      router.refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Network error — could not reach the server')
       setLoading(false)
-      return
     }
-
-    router.push(data.redirectTo)
   }
 
   return (
