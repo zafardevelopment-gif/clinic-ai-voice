@@ -177,7 +177,10 @@ export default function CopilotSessionPage() {
         {isFinalized ? (
           <PageCard title="Finalized Consultation">
             <div className="text-sm mb-2" style={{ color: 'var(--txt)' }}><strong>Final diagnosis:</strong> {result.doctor_final_diagnosis}</div>
-            <div className="text-xs" style={{ color: 'var(--txt3)' }}>Signed and finalized at {new Date(result.finalized_at!).toLocaleString()}</div>
+            <div className="text-xs mb-4" style={{ color: 'var(--txt3)' }}>Signed and finalized at {new Date(result.finalized_at!).toLocaleString()}</div>
+            <AppBtn onClick={() => window.open(`/api/clinic/copilot/${sessionId}/prescription/print`, '_blank')}>
+              Download Prescription
+            </AppBtn>
           </PageCard>
         ) : (
           <>
