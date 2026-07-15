@@ -19,7 +19,20 @@ export async function GET() {
     .order('full_name')
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data)
+
+  const { data: logins } = await db
+    .from('users')
+    .select('doctor_id, email')
+    .eq('clinic_id', clinicId)
+    .not('doctor_id', 'is', null)
+
+  const loginByDoctorId = new Map((logins || []).map(u => [u.doctor_id, u.email]))
+  const withLogin = (data || []).map(d => ({
+    ...d,
+    login_email: loginByDoctorId.get(d.id) || null,
+  }))
+
+  return NextResponse.json(withLogin)
 }
 
 export async function POST(req: NextRequest) {
