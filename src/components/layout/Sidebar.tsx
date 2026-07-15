@@ -122,10 +122,75 @@ const clinicNav: NavSection[] = [
   },
 ]
 
+const doctorNav: NavSection[] = [
+  {
+    label: 'Overview',
+    items: [
+      { icon: '📊', label: 'Dashboard', href: '/clinic/dashboard' },
+    ],
+  },
+  {
+    label: 'My Schedule',
+    items: [
+      { icon: '📅', label: 'Appointments', href: '/clinic/appointments' },
+      { icon: '🗓️', label: 'Availability', href: '/clinic/availability' },
+    ],
+  },
+  {
+    label: 'Patients',
+    items: [
+      { icon: '🧑‍🤝‍🧑', label: 'Patients', href: '/clinic/patients' },
+    ],
+  },
+  {
+    label: 'Clinical Tools',
+    items: [
+      { icon: '🩺', label: 'AI Co-Pilot', href: '/clinic/copilot' },
+      { icon: '🔍', label: 'Symptom Triage', href: '/clinic/triage' },
+      { icon: '🧪', label: 'Lab Reports', href: '/clinic/lab-reports' },
+    ],
+  },
+  {
+    label: 'AI Voice',
+    items: [
+      { icon: '📞', label: 'Call Logs', href: '/clinic/call-logs' },
+    ],
+  },
+]
+
+const receptionistNav: NavSection[] = [
+  {
+    label: 'Overview',
+    items: [
+      { icon: '📊', label: 'Dashboard', href: '/clinic/dashboard' },
+    ],
+  },
+  {
+    label: 'Patients',
+    items: [
+      { icon: '🧑‍🤝‍🧑', label: 'Patients', href: '/clinic/patients' },
+      { icon: '📅', label: 'Appointments', href: '/clinic/appointments' },
+    ],
+  },
+  {
+    label: 'Clinic OS',
+    items: [
+      { icon: '🔍', label: 'Symptom Triage', href: '/clinic/triage' },
+    ],
+  },
+  {
+    label: 'AI Voice',
+    items: [
+      { icon: '🤖', label: 'AI Dashboard', href: '/clinic/ai-dashboard' },
+      { icon: '📞', label: 'Call Logs', href: '/clinic/call-logs' },
+    ],
+  },
+]
+
 export default function Sidebar({ role, userName, clinicName }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
-  const nav = role === 'admin' ? adminNav : clinicNav
+  const nav = role === 'admin' ? adminNav : role === 'doctor' ? doctorNav : role === 'receptionist' ? receptionistNav : clinicNav
   const [open, setOpen] = useState(false)
 
   // Topbar's hamburger dispatches this event to open the mobile drawer.
